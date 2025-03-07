@@ -79,7 +79,7 @@ export SYSTEM_INTERFACE = plisim
 endif
 
 # Linux
-LIBS =-lnsl -pthread -lm -lrt -ldl
+LIBS =-lnsl2 -pthread -lm -lrt -ldl
 
 ifdef LTSW_CHIPS
 ifneq ($(YAML),)

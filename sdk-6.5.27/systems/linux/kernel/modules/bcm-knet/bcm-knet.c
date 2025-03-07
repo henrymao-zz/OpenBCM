@@ -6823,10 +6823,10 @@ bkn_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
         return;
     }
 
-    strlcpy(drvinfo->driver, "bcm-knet", sizeof(drvinfo->driver));
+    strncpy(drvinfo->driver, "bcm-knet", sizeof(drvinfo->driver));
     snprintf(drvinfo->version, sizeof(drvinfo->version), "%d", KCOM_VERSION);
-    strlcpy(drvinfo->fw_version, "N/A", sizeof(drvinfo->fw_version));
-    strlcpy(drvinfo->bus_info, "N/A", sizeof(drvinfo->bus_info));
+    strncpy(drvinfo->fw_version, "N/A", sizeof(drvinfo->fw_version));
+    strncpy(drvinfo->bus_info, "N/A", sizeof(drvinfo->bus_info));
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
@@ -8502,7 +8502,7 @@ bkn_knet_hw_init(kcom_msg_hw_init_t *kmsg, int len)
     /* Ensure 32-bit PCI DMA is mapped properly on 64-bit platforms */
     dev_type = kernel_bde->get_dev_type(sinfo->dev_no);
     if (dev_type & BDE_PCI_DEV_TYPE && sinfo->cmic_type != 'x') {
-        if (pci_set_dma_mask(sinfo->pdev, 0xffffffff)) {
+        if (dma_set_mask_and_coherent(&sinfo->pdev->dev, 0xffffffff)) {
             cfg_api_unlock(sinfo, &flags);
             gprintk("No suitable DMA available for SKBs\n");
             kmsg->hdr.status = KCOM_E_RESOURCE;
@@ -9656,7 +9656,7 @@ bkn_knet_dev_init(int d)
     }
 
     if (use_napi) {
-        netif_napi_add(dev, &sinfo->napi, bkn_poll, napi_weight);
+        netif_napi_add(dev, &sinfo->napi, bkn_poll);
     }
     return 0;
 }

@@ -90,7 +90,7 @@ endif
 STD_CPPFLAGS = ${STD_CFLAGS}
 STD_CXXFLAGS = ${STD_CFLAGS}
 
-BCM_CFLAGS   ?= -Wall -Werror -fno-strict-aliasing
+BCM_CFLAGS   ?= -Wall -Werror -fno-strict-aliasing -Wno-array-parameter -Wno-address -Wno-enum-int-mismatch -Wno-stringop-overflow -Wno-array-bounds -Wno-unused-result -Wno-format-overflow -Wno-unused-function -Wno-maybe-uninitialized -Wno-restrict -Wno-aggressive-loop-optimizations
 ifeq ($(platform), iproc-3_6)
 ifeq (BE,$(ENDIAN_MODE))
 BCM_CFLAGS   += -Werror=format-security
