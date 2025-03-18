@@ -246,7 +246,6 @@ _gmodule_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-#ifdef HAVE_UNLOCKED_IOCTL
 static long
 _gmodule_unlocked_ioctl(struct file *filp,
                         unsigned int cmd, unsigned long arg)
@@ -257,20 +256,7 @@ _gmodule_unlocked_ioctl(struct file *filp,
 	return -1;
     }
 }
-#else
-static int 
-_gmodule_ioctl(struct inode *inode, struct file *filp,
-	       unsigned int cmd, unsigned long arg)
-{
-    if(_gmodule->ioctl) {
-	return _gmodule->ioctl(cmd, arg);
-    } else {
-	return -1;
-    }
-}
-#endif
 
-#ifdef HAVE_COMPAT_IOCTL
 static long
 _gmodule_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -280,7 +266,6 @@ _gmodule_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return -1;
     }
 }
-#endif
 
 
 static int
@@ -309,17 +294,11 @@ _gmodule_mmap(struct file *filp, struct vm_area_struct *vma)
 /* FILE OPERATIONS */
 
 struct file_operations _gmodule_fops = {
-#ifdef HAVE_UNLOCKED_IOCTL
     .unlocked_ioctl = _gmodule_unlocked_ioctl,
-#else
-    .ioctl =      _gmodule_ioctl,
-#endif
     .open =       _gmodule_open,
     .release =    _gmodule_release,
     .mmap =       _gmodule_mmap,
-#ifdef HAVE_COMPAT_IOCTL
     .compat_ioctl = _gmodule_compat_ioctl,
-#endif
 };
 
 

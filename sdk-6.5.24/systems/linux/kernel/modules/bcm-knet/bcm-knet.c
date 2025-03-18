@@ -5464,7 +5464,7 @@ bkn_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
     bkn_priv_t *priv;
     bkn_switch_info_t *sinfo;
-    struct hwtstamp_config config;
+    static struct hwtstamp_config config;
 
     DBG_PTP(("bkn_ioctl: module_initialized:%d\n", module_initialized));
 
@@ -6609,10 +6609,10 @@ bkn_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
         return;
     }
 
-    strlcpy(drvinfo->driver, "bcm-knet", sizeof(drvinfo->driver));
+    strncpy(drvinfo->driver, "bcm-knet", sizeof(drvinfo->driver));
     snprintf(drvinfo->version, sizeof(drvinfo->version), "%d", KCOM_VERSION);
-    strlcpy(drvinfo->fw_version, "N/A", sizeof(drvinfo->fw_version));
-    strlcpy(drvinfo->bus_info, "N/A", sizeof(drvinfo->bus_info));
+    strncpy(drvinfo->fw_version, "N/A", sizeof(drvinfo->fw_version));
+    strncpy(drvinfo->bus_info, "N/A", sizeof(drvinfo->bus_info));
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
@@ -6804,7 +6804,7 @@ bkn_proc_link_write(struct file *file, const char *buf,
     bkn_priv_t *priv;
     bkn_switch_info_t *sinfo;
     unsigned long flags;
-    char link_str[40];
+    static char link_str[40];
     char *ptr;
     char *newline;
 
@@ -6929,7 +6929,7 @@ bkn_proc_rate_write(struct file *file, const char *buf,
                     size_t count, loff_t *loff)
 {
     bkn_switch_info_t *sinfo;
-    char rate_str[80];
+    static char rate_str[80];
     char *ptr;
     int unit, chan;
 
@@ -7246,7 +7246,7 @@ bkn_proc_debug_write(struct file *file, const char *buf,
                      size_t count, loff_t *loff)
 {
     bkn_switch_info_t *sinfo;
-    char debug_str[40];
+    static char debug_str[40];
     char *ptr;
     int unit;
 
@@ -7437,7 +7437,7 @@ bkn_proc_stats_write(struct file *file, const char *buf,
     bkn_switch_info_t *sinfo;
     struct list_head *flist;
     bkn_filter_t *filter;
-    char debug_str[40];
+    static char debug_str[40];
     char *ptr;
     int unit;
     int clear_mask;
@@ -7734,7 +7734,7 @@ bkn_proc_ptp_stats_write(struct file *file, const char *buf, size_t count, loff_
     bkn_switch_info_t *sinfo;
     bkn_priv_t *priv;
     struct net_device *dev;
-    char debug_str[40];
+    static char debug_str[40];
     char *ptr;
     int clear_mask;
 
@@ -8236,7 +8236,7 @@ bkn_knet_hw_init(kcom_msg_hw_init_t *kmsg, int len)
     /* Ensure 32-bit PCI DMA is mapped properly on 64-bit platforms */
     dev_type = kernel_bde->get_dev_type(sinfo->dev_no);
     if (dev_type & BDE_PCI_DEV_TYPE && sinfo->cmic_type != 'x') {
-        if (pci_set_dma_mask(sinfo->pdev, 0xffffffff)) {
+        if (dma_set_mask_and_coherent(&sinfo->pdev->dev, 0xffffffff)) {
             cfg_api_unlock(sinfo, &flags);
             gprintk("No suitable DMA available for SKBs\n");
             kmsg->hdr.status = KCOM_E_RESOURCE;
@@ -9362,7 +9362,7 @@ bkn_knet_dev_init(int d)
     }
 
     if (use_napi) {
-        netif_napi_add(dev, &sinfo->napi, bkn_poll, napi_weight);
+        netif_napi_add(dev, &sinfo->napi, bkn_poll);
     }
     return 0;
 }
@@ -9440,7 +9440,7 @@ static int
 _ioctl(unsigned int cmd, unsigned long arg)
 {
     bkn_ioctl_t io;
-    kcom_msg_t kmsg;
+    static kcom_msg_t kmsg;
 
     if (!module_initialized) {
         return -EFAULT;

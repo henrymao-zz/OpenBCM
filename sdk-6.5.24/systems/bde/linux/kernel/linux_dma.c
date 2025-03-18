@@ -71,7 +71,7 @@
 #if defined(CONFIG_CMA) && defined(CONFIG_CMA_SIZE_MBYTES)
 #define DMA_MAX_ALLOC_SIZE (CONFIG_CMA_SIZE_MBYTES * 1024 * 1024)
 #else
-#define DMA_MAX_ALLOC_SIZE (1 << (MAX_ORDER - 1 + PAGE_SHIFT)) /* Maximum size the kernel can allocate in one allocation */
+#define DMA_MAX_ALLOC_SIZE (1 << (MAX_PAGE_ORDER - 1 + PAGE_SHIFT)) /* Maximum size the kernel can allocate in one allocation */
 #endif
 #endif /* _SIMPLE_MEMORY_ALLOCATION_ */
 
@@ -116,7 +116,7 @@
 #endif
 
 #ifndef KMALLOC_MAX_SIZE
-#define KMALLOC_MAX_SIZE (1UL << (MAX_ORDER - 1 + PAGE_SHIFT))
+#define KMALLOC_MAX_SIZE (1UL << (MAX_PAGE_ORDER - 1 + PAGE_SHIFT))
 #endif
 
 /* Compatibility */
@@ -1245,12 +1245,7 @@ _sinval(int d, void *ptr, int length)
 #if defined(dma_cache_wback_inv)
      dma_cache_wback_inv((unsigned long)ptr, length);
 #else
-#if defined(IPROC_CMICD) || defined(BCM958525)
-    
     dma_sync_single_for_cpu(NULL, (unsigned long)ptr, length, DMA_BIDIRECTIONAL);
-#else
-    dma_cache_sync(NULL, ptr, length, DMA_BIDIRECTIONAL);
-#endif
 #endif
     return 0;
 }
@@ -1261,12 +1256,7 @@ _sflush(int d, void *ptr, int length)
 #if defined(dma_cache_wback_inv)
     dma_cache_wback_inv((unsigned long)ptr, length);
 #else
-#if defined(IPROC_CMICD) || defined(BCM958525)
-    
     dma_sync_single_for_cpu(NULL, (unsigned long)ptr, length, DMA_BIDIRECTIONAL);
-#else
-    dma_cache_sync(NULL, ptr, length, DMA_BIDIRECTIONAL);
-#endif
 #endif
 
     return 0;
