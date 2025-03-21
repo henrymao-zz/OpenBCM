@@ -4995,9 +4995,9 @@ soc_reg_addr(int unit, soc_reg_t reg, int port, int index)
 
     /* put together address: base|block|pindex + index */
     base = SOC_REG_INFO(unit, reg).offset;
-    LOG_VERBOSE(BSL_LS_SOC_REG,
-                (BSL_META_U(unit,
-                            "base: %x "), base));
+    //LOG_VERBOSE(BSL_LS_SOC_REG,
+    //            (BSL_META_U(unit,
+    //                        "base: %x "), base));
         
     if (block >= 0) {
         base |= ((SOC_BLOCK2OFFSET(unit, block) & 0xf) << SOC_BLOCK_BP) |
@@ -5029,10 +5029,10 @@ soc_reg_addr(int unit, soc_reg_t reg, int port, int index)
             base += (index << gransh);
         }
     }
-    LOG_VERBOSE(BSL_LS_SOC_REG,
-                (BSL_META_U(unit,
-                            "addr: %x, block: %d, index: %d, pindex: %d, gransh: %d\n"),
-                 base, block, index, pindex, gransh));
+    //LOG_VERBOSE(BSL_LS_SOC_REG,
+    //            (BSL_META_U(unit,
+    //                        "addr: %x, block: %d, index: %d, pindex: %d, gransh: %d\n"),
+    //             base, block, index, pindex, gransh));
     return base;
 }
 
@@ -6813,9 +6813,9 @@ int soc_reg_xaddr_get(int unit, soc_reg_t reg, int port, int index,
         base &= ~(1 << SOC_RT_BP);
     }
 
-    LOG_VERBOSE(BSL_LS_SOC_REG,
-                (BSL_META_U(unit,
-                            "base: %x "), base));
+    //LOG_VERBOSE(BSL_LS_SOC_REG,
+    //            (BSL_META_U(unit,
+    //                        "base: %x "), base));
 
     if ((port == REG_PORT_ANY || port == SOC_CORE_ALL) && (soc_feature(unit,soc_feature_reg_port_any_set_all_instance))) {
         uint32 nof_instance;
@@ -6881,10 +6881,10 @@ int soc_reg_xaddr_get(int unit, soc_reg_t reg, int port, int index,
             base += (index << gransh);
         }
     }
-    LOG_VERBOSE(BSL_LS_SOC_REG,
-                (BSL_META_U(unit,
-                            "addr new: %x, block: %d, index: %d, pindex: %d, gransh: %d\n"),
-                 base, access_info->blk_list[0], index, pindex, gransh));
+    //LOG_VERBOSE(BSL_LS_SOC_REG,
+    //            (BSL_META_U(unit,
+    //                        "addr new: %x, block: %d, index: %d, pindex: %d, gransh: %d\n"),
+    //             base, access_info->blk_list[0], index, pindex, gransh));
     access_info->offset = base;
     return SOC_E_NONE;
 }
