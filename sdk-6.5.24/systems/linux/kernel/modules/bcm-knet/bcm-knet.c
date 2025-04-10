@@ -9439,12 +9439,14 @@ _init(void)
 static int
 _ioctl(unsigned int cmd, unsigned long arg)
 {
-    bkn_ioctl_t io;
+    static bkn_ioctl_t io;
     static kcom_msg_t kmsg;
 
     if (!module_initialized) {
         return -EFAULT;
     }
+
+    memset(&io, 0, sizeof(bkn_ioctl_t));
 
     if (copy_from_user(&io, (void*)arg, sizeof(io))) {
         return -EFAULT;
@@ -9456,6 +9458,8 @@ _ioctl(unsigned int cmd, unsigned long arg)
 
     io.rc = 0;
 
+    memset(&kmsg, 0, sizeof(kcom_msg_t));
+
     switch(cmd) {
     case 0:
         if (io.len > 0) {
@@ -9466,7 +9470,6 @@ _ioctl(unsigned int cmd, unsigned long arg)
             io.len = bkn_handle_cmd_req(&kmsg, io.len);
             ioctl_cmd--;
         } else {
-            memset(&kmsg, 0, sizeof(kcom_msg_t));
             /*
              * Retrive the kmsg.hdr.unit from user space. The dma event queue
              * selection is based the instance derived from unit.
