@@ -535,6 +535,9 @@ static volatile int module_initialized;
 
 static ibde_t *kernel_bde = NULL;
 
+extern int bcm_switchdev_init(void);
+extern int bcm_switchdev_uninit(void);
+
 /* Descriptor info */
 typedef struct bkn_desc_info_s {
     uint32_t *dcb_mem;
@@ -6683,6 +6686,11 @@ static const struct ethtool_ops bkn_ethtool_ops = {
 #endif
 };
 
+bool bkn_port_dev_check(const struct net_device *dev)
+{
+       return dev->netdev_ops == &bkn_netdev_ops;
+}
+
 static struct net_device *
 bkn_init_ndev(u8 *mac, char *name)
 {
@@ -6979,6 +6987,7 @@ struct file_operations bkn_proc_rate_file_ops = {
     write:      bkn_proc_rate_write,
     release:    single_release,
 };
+
 
 /*
  * Driver DMA Proc Entry
@@ -9194,6 +9203,9 @@ _cleanup(void)
     /* Inidicate that we are shutting down */
     module_initialized = 0;
 
+    //TODO switchdev cleanup
+    bcm_switchdev_uninit();
+
     bkn_proc_cleanup();
     remove_proc_entry("bcm/knet", NULL);
     remove_proc_entry("bcm", NULL);
@@ -9430,6 +9442,9 @@ _init(void)
     }
     evt = &_bkn_evt[0];
     init_waitqueue_head(&evt->evt_wq);
+
+    /* TODO: switchdev related,  move to separate module*/
+    bcm_switchdev_init();
 
     module_initialized = 1;
 
