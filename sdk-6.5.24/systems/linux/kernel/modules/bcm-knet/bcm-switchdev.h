@@ -27,8 +27,6 @@ struct bcm_switchdev {
 };
 
 
-
-
 /* netlink attributes */
 enum {
     SWITCHDEV_A_UNSPEC,
@@ -61,10 +59,8 @@ static struct genl_family switchdev_genl_family = {
     .hdrsize = 0,             
     .name = "SWITCHDEV",      
     .version = 1,
-    .maxattr = DOC_EXMPL_A_MAX,
+    .maxattr = SWITCHDEV_A_MAX,
 };
-
-
 
 /* operation definition */
 static struct genl_ops switchdev_genl_ops_echo = {
@@ -74,8 +70,6 @@ static struct genl_ops switchdev_genl_ops_echo = {
     .doit = switchdev_echo,
     .dumpit = NULL,
 };
-
-
 
 
 
