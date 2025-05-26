@@ -13,24 +13,49 @@
 #include <linux/jiffies.h>
 #include <linux/rtnetlink.h>
 #include <linux/netlink.h>
+#include <net/netlink.h>
+#include <net/genetlink.h>
 #include <net/switchdev.h>
 #include <net/vxlan.h>
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include <kcom.h>
 #include <bcm-knet.h>
+#include "bcm-switchdev.h"
 
 
-static struct workqueue_struct *swdev_wq;
+static struct workqueue_struct *swdev_wq = NULL;
+static struct bcm_switchdev *swdev = NULL;
 
 
 /*****************************************************************************************/
 /*                             netlink                                                   */
 /*****************************************************************************************/
- 
- 
+static int switchdev_echo(struct sk_buff *skb, struct genl_info *info);
+
+/* operation definition */
+static struct genl_small_ops switchdev_genl_ops_echo[] = {
+    {
+        .cmd = SWITCHDEV_C_ECHO,
+        .flags = 0,
+        .doit = switchdev_echo,
+    },
+};
+
 static struct genl_multicast_group switchdev_genl_mcgrp = {
     .name = "SWITCHDEV_GRP",
+};
+
+
+/* netlink family definition */
+static struct genl_family switchdev_genl_family = {
+    .hdrsize = 0,             
+    .name = "SWITCHDEV",      
+    .version = 1,
+    .maxattr = SWITCHDEV_A_MAX,
+    .small_ops = switchdev_genl_ops_echo,
+    .n_small_ops = ARRAY_SIZE(switchdev_genl_ops_echo),
+    .mcgrps = &switchdev_genl_mcgrp,
 };
 
 static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struct sk_buff **skbp)
@@ -44,7 +69,7 @@ static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struc
     }
 
     /* Add a new netlink message to an skb */
-    genlmsg_put(skb, pid, 0, &doc_exmpl_genl_family, 0, cmd);
+    genlmsg_put(skb, pid, 0, &switchdev_genl_family, 0, cmd);
 
     *skbp = skb;
     return 0;
@@ -86,11 +111,7 @@ int genl_msg_send_to_user(void *data, int len, pid_t pid)
 
     head = genlmsg_data(nlmsg_data(nlmsg_hdr(skb)));
 
-    rc = genlmsg_end(skb, head);
-    if (rc < 0) {
-        kfree_skb(skb);
-        return rc;
-    }
+    genlmsg_end(skb, head);
 
     rc = genlmsg_unicast(&init_net, skb, pid);
     if (rc < 0) {
@@ -122,48 +143,25 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
     return ret;
 }
 
+
 static int genetlink_init(void)
 {
     int rc;
  
-    /**
-     * 1. Registering A Family
-     * This function doesn't exist past linux 3.12
-     */
     rc = genl_register_family(&switchdev_genl_family);
-    if (rc != 0)
-        goto err_out1;
+    if (rc != 0) {
+        printk("switchdev genetlink_init failed %d\n", rc);
+        return rc;
+    }
  
-    rc = genl_register_ops(&switchdev_genl_family, &switchdev_genl_ops_echo);
-    if (rc != 0)
-        goto err_out2;
- 
-    /*
-     * for multicast
-     */
-    rc = genl_register_mc_group(&switchdev_genl_family, &switchdev_genl_mcgrp);
-    if (rc != 0)
-        goto err_out3;
- 
-    printk("switchdev_genl_mcgrp.id=%d", switchdev_genl_mcgrp.id);
     printk("genetlink_init OK");
     return 0;
- 
-err_out3:
-    genl_unregister_ops(&switchdev_genl_family, &switchdev_genl_ops_echo);
-err_out2:
-    genl_unregister_family(&switchdev_genl_family);
-err_out1:
-    printk("Error occured while inserting switchdev netlink module\n");
-    return rc;
 }
  
 static void genetlink_exit(void)
 {
     printk("switchdev Netlink Module unloaded.");
  
-    genl_unregister_mc_group(&switchdev_genl_family, &switchdev_genl_mcgrp);
-    genl_unregister_ops(&switchdev_genl_family, &switchdev_genl_ops_echo);
     genl_unregister_family(&switchdev_genl_family);
 }
 
@@ -253,7 +251,7 @@ static int bcm_switchdev_event(struct notifier_block *unused,
                     struct switchdev_notifier_fdb_info,
                     info);
 
-        INIT_WORK(&switchdev_work->work, bcmsw_fdb_event_work);
+        INIT_WORK(&switchdev_work->work, bcm_fdb_event_work);
         memcpy(&switchdev_work->fdb_info, ptr,
                sizeof(switchdev_work->fdb_info));
 
@@ -331,7 +329,7 @@ static int bcm_switchdev_blk_event(struct notifier_block *unused,
 }
 
 
-static int bcm_switchdev_handler_init(void)
+static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
 {
     int err;
 
@@ -358,15 +356,11 @@ err_register_swdev_notifier:
 
 int bcm_switchdev_init_internal(void)
 {
-    struct bcm_switchdev *swdev;
     int err;
 
     swdev = kzalloc(sizeof(*swdev), GFP_KERNEL);
     if (!swdev)
         return -ENOMEM;
-
-    sw->swdev = swdev;
-    swdev->sw = sw;
 
     INIT_LIST_HEAD(&swdev->bridge_list);
 

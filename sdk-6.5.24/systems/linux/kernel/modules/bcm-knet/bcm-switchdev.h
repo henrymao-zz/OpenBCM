@@ -53,24 +53,6 @@ enum {
 
 
 
-/* netlink family definition */
-static struct genl_family switchdev_genl_family = {
-    .id = GENL_ID_GENERATE,   
-    .hdrsize = 0,             
-    .name = "SWITCHDEV",      
-    .version = 1,
-    .maxattr = SWITCHDEV_A_MAX,
-};
-
-/* operation definition */
-static struct genl_ops switchdev_genl_ops_echo = {
-    .cmd = SWITCHDEV_C_ECHO,
-    .flags = 0,
-    .policy = switchdev_genl_policy,
-    .doit = switchdev_echo,
-    .dumpit = NULL,
-};
-
-
+#define TEST_GENL_MSG_FROM_KERNEL "Hello from switchdev Kernel!"
 
 #endif
