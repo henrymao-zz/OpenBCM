@@ -5456,7 +5456,8 @@ bkn_set_mac_address(struct net_device *dev, void *addr)
 #endif
         return -EINVAL;
     }
-    memcpy(dev->dev_addr, ((struct sockaddr *)addr)->sa_data, dev->addr_len);
+    //memcpy(dev->dev_addr, ((struct sockaddr *)addr)->sa_data, dev->addr_len);
+    dev_addr_set(dev, addr);
     return 0;
 }
 #endif
@@ -6708,7 +6709,8 @@ bkn_init_ndev(u8 *mac, char *name)
 #endif
 
     /* Set the device MAC address */
-    memcpy(dev->dev_addr, mac, 6);
+    //memcpy(dev->dev_addr, mac, 6);
+    dev_addr_set(dev, mac);
 
     /* Device information -- not available right now */
     dev->irq = 0;
@@ -8987,14 +8989,15 @@ bkn_knet_wb_cleanup(kcom_msg_wb_cleanup_t *kmsg, int len)
 static int
 bkn_handle_cmd_req(kcom_msg_t *kmsg, int len)
 {
+    int i;
     /* Silently drop events and unrecognized message types */
     if (kmsg->hdr.type != KCOM_MSG_TYPE_CMD) {
         if (kmsg->hdr.opcode == KCOM_M_STRING) {
             DBG_VERB(("Debug string: '%s'\n", kmsg->string.val));
             return 0;
         }
-        DBG_WARN(("Unsupported message (type=%d, opcode=%d)\n",
-                  kmsg->hdr.type, kmsg->hdr.opcode));
+        DBG_WARN(("Unsupported message (type=%d, opcode=%d len=%d)\n",
+                  kmsg->hdr.type, kmsg->hdr.opcode, len));
         return 0;
     }
 
@@ -9108,8 +9111,8 @@ bkn_handle_cmd_req(kcom_msg_t *kmsg, int len)
         }
         break;
     default:
-        DBG_WARN(("Unsupported command (type=%d, opcode=%d)\n",
-                  kmsg->hdr.type, kmsg->hdr.opcode));
+        DBG_WARN(("Unsupported command (type=%d, opcode=%d len=%d)\n",
+                  kmsg->hdr.type, kmsg->hdr.opcode, len));
         kmsg->hdr.opcode = 0;
         len = sizeof(kcom_msg_hdr_t);
         break;

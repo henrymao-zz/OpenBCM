@@ -197,7 +197,7 @@ static int bcm_switchdev_event(struct notifier_block *unused,
     struct net_device *upper;
     //int err;
 
-    printk("bcm_switchdev_event \n");
+    printk("bcm_switchdev_event event = %d\n", event);
     if (event == SWITCHDEV_PORT_ATTR_SET) {
 #if 0
         err = switchdev_handle_port_attr_set(dev, ptr,
@@ -273,6 +273,12 @@ static int bcm_switchdev_blk_event(struct notifier_block *unused,
     struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
     int err;
 
+    printk("bcm_switchdev_blk_event event = %d\n",event);
+    if (!dev) {
+        printk("   dev is NULL\n");
+        return NOTIFY_DONE;
+    }
+
     switch (event) {
     case SWITCHDEV_PORT_OBJ_ADD:
         err = switchdev_handle_port_obj_add(dev, ptr,
@@ -311,11 +317,14 @@ static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
     if (err)
         goto err_register_blk_swdev_notifier;
 
+    printk("bcm_switchdev_handler_init success!\n");
     return 0;
 
 err_register_blk_swdev_notifier:
+    printk("bcm_switchdev_handler_init blk failed %d\n", err);
     unregister_switchdev_notifier(&swdev->swdev_nb);
 err_register_swdev_notifier:
+    printk("bcm_switchdev_handler_init non blk failed %d\n", err);
     destroy_workqueue(swdev_wq);
     return err;
 }
@@ -326,6 +335,7 @@ int bcm_switchdev_init_internal(void)
 {
     int err;
 
+    printk("    switchdev init handler...\n");
     swdev = kzalloc(sizeof(*swdev), GFP_KERNEL);
     if (!swdev)
         return -ENOMEM;
@@ -335,6 +345,7 @@ int bcm_switchdev_init_internal(void)
     swdev_wq = alloc_ordered_workqueue("%s_ordered", 0, "bcm_switchdev");
     if (!swdev_wq) {
         err = -ENOMEM;
+        printk("    failed to alloc workqueue\n");
         goto err_alloc_wq;
     }
 
@@ -361,9 +372,9 @@ int bcm_switchdev_init(void)
     printk("Initializing switchdev...\n");
 
     err = bcm_switchdev_init_internal();
-    if (err)
-    goto err_swdev_init;
-
+    if (err) {
+         goto err_swdev_init;
+    }
 
     //initialize netlink 
     genetlink_init();
@@ -376,8 +387,13 @@ err_swdev_init:
 
 int bcm_switchdev_uninit(void)
 {
-
     genetlink_exit();
+
+    unregister_switchdev_notifier(&swdev->swdev_nb);
+    unregister_switchdev_blocking_notifier(&swdev->swdev_nb_blk);
+
+    destroy_workqueue(swdev_wq);
+    kfree(swdev);
 
     return 0;
 }
