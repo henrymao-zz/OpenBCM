@@ -64,21 +64,18 @@ static struct genl_family switchdev_genl_family = {
 static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 {
     /* message handling code goes here; return 0 on success, negative values on failure */
-    struct nlmsghdr *nlhdr;
-    struct genlmsghdr *genlhdr;
-    struct nlattr *nlh;
     char *str;
-    int ret;
+    int   ret;
     struct sk_buff *msg;
+    void           *hdr;
 
-
-    nlhdr = nlmsg_hdr(skb);
-    genlhdr = nlmsg_data(nlhdr);
-    nlh = genlmsg_data(genlhdr);
-    str = nla_data(nlh);
-
-    printk("switchdev_echo get: %s\n", str);
-    
+    /* Check if the attribute is present and print it */
+    if (info->attrs[SWITCHDEV_A_MSG]) {
+    	char *str = nla_data(info->attrs[SWITCHDEV_A_MSG]);
+    	printk("switchdev_echo message received: %s\n", str);
+    } else {
+    	printk("switchdev_echo empty message received\n");
+    }
 
     /* Allocate a new buffer for the reply */
 	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
@@ -96,7 +93,7 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 		return -EMSGSIZE;
 	}
 	/* And the message */
-	if ((ret = nla_put_string(msg, GENLTEST_A_MSG,
+	if ((ret = nla_put_string(msg, SWITCHDEV_A_MSG,
 				  "Hello from Kernel Space, Netlink!"))) {
         printk("failed to create message string\n");
 		genlmsg_cancel(msg, hdr);
