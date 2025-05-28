@@ -61,69 +61,6 @@ static struct genl_family switchdev_genl_family = {
     .n_mcgrps = ARRAY_SIZE(switchdev_genl_mcgrp),
 };
 
-static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struct sk_buff **skbp)
-{
-    struct sk_buff *skb;
-
-    /* create a new netlink msg */
-    skb = genlmsg_new(size, GFP_KERNEL);
-    if (skb == NULL) {
-        return -ENOMEM;  
-    }
-
-    /* Add a new netlink message to an skb */
-    genlmsg_put(skb, pid, 0, &switchdev_genl_family, 0, cmd);
-
-    *skbp = skb;
-    return 0;
-}
-
-static inline int genl_msg_mk_usr_msg(struct sk_buff *skb, int type, void *data, int len)
-{
-    int rc;
-
-    /* add a netlink attribute to a socket buffer */
-    if ((rc = nla_put(skb, type, len, data)) != 0) {
-        return rc;
-    }
-    return 0;
-}
-
-/**
-* genl_msg_send_to_user 
-*/
-int genl_msg_send_to_user(void *data, int len, pid_t pid)
-{
-    struct sk_buff *skb;
-    size_t size;
-    void *head;
-    int rc;
-
-    size = nla_total_size(len); /* total length of attribute including padding */
-
-    rc = genl_msg_prepare_usr_msg(SWITCHDEV_C_ECHO, size, pid, &skb);
-    if (rc) {
-        return rc;
-    }
-
-    rc = genl_msg_mk_usr_msg(skb, SWITCHDEV_A_MSG, data, len);
-    if (rc) {
-        kfree_skb(skb);
-        return rc;
-    }
-
-    head = genlmsg_data(nlmsg_data(nlmsg_hdr(skb)));
-
-    genlmsg_end(skb, head);
-
-    rc = genlmsg_unicast(&init_net, skb, pid);
-    if (rc < 0) {
-        return rc;
-    }
-
-    return 0;
-}
-
 static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 {
     /* message handling code goes here; return 0 on success, negative values on failure */
@@ -132,6 +69,8 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
     struct nlattr *nlh;
     char *str;
     int ret;
+    struct sk_buff *msg;
+
 
     nlhdr = nlmsg_hdr(skb);
     genlhdr = nlmsg_data(nlhdr);
@@ -139,11 +78,40 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
     str = nla_data(nlh);
 
     printk("switchdev_echo get: %s\n", str);
+    
 
-    ret = genl_msg_send_to_user(TEST_GENL_MSG_FROM_KERNEL,
-            strlen(TEST_GENL_MSG_FROM_KERNEL) + 1,  nlhdr->nlmsg_pid);
+    /* Allocate a new buffer for the reply */
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (!msg) {
+		printk("failed to allocate message buffer\n");
+		return -ENOMEM;
+	}
 
-    return ret;
+	/* Put the Generic Netlink header */
+	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq, &switchdev_genl_family, 0,
+                      SWITCHDEV_C_ECHO);
+	if (!hdr) {
+		printk("failed to create genetlink header\n");
+		nlmsg_free(msg);
+		return -EMSGSIZE;
+	}
+	/* And the message */
+	if ((ret = nla_put_string(msg, GENLTEST_A_MSG,
+				  "Hello from Kernel Space, Netlink!"))) {
+        printk("failed to create message string\n");
+		genlmsg_cancel(msg, hdr);
+		nlmsg_free(msg);
+		goto out;
+	}
+
+	/* Finalize the message and send it */
+	genlmsg_end(msg, hdr);
+
+	ret = genlmsg_reply(msg, info);
+	printk("reply sent\n");
+
+out:
+	return ret;
 }
 
 
