@@ -34,16 +34,23 @@ static struct bcm_switchdev *swdev = NULL;
 static int switchdev_echo(struct sk_buff *skb, struct genl_info *info);
 
 /* operation definition */
-static struct genl_small_ops switchdev_genl_ops_echo[] = {
+/* Attribute validation policy for our echo command */
+static struct nla_policy echo_pol[GENLTEST_A_MAX + 1] = {
+	[GENLTEST_A_MSG] = { .type = NLA_NUL_STRING },
+};
+
+static struct genl_ops switchdev_genl_ops_echo[] = {
     {
         .cmd = SWITCHDEV_C_ECHO,
-        .flags = 0,
+        .policy = echo_pol,
         .doit = switchdev_echo,
     },
 };
 
 static struct genl_multicast_group switchdev_genl_mcgrp = {
-    .name = "SWITCHDEV_GRP",
+    {
+        .name = "SWITCHDEV_GRP",
+    }
 };
 
 
@@ -53,9 +60,10 @@ static struct genl_family switchdev_genl_family = {
     .name = "SWITCHDEV",      
     .version = 1,
     .maxattr = SWITCHDEV_A_MAX,
-    .small_ops = switchdev_genl_ops_echo,
-    .n_small_ops = ARRAY_SIZE(switchdev_genl_ops_echo),
-    .mcgrps = &switchdev_genl_mcgrp,
+    .ops = switchdev_genl_ops_echo,
+    .n_ops = ARRAY_SIZE(switchdev_genl_ops_echo),
+    .mcgrps = switchdev_genl_mcgrp,
+    .n_mcgrps = ARRAY_SIZE(switchdev_genl_mcgrp),
 };
 
 static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struct sk_buff **skbp)
@@ -154,7 +162,7 @@ static int genetlink_init(void)
         return rc;
     }
  
-    printk("genetlink_init OK");
+    printk("switchdev genetlink_init OK");
     return 0;
 }
  
