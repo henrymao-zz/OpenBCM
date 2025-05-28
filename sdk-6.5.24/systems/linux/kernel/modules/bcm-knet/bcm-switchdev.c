@@ -34,20 +34,15 @@ static struct bcm_switchdev *swdev = NULL;
 static int switchdev_echo(struct sk_buff *skb, struct genl_info *info);
 
 /* operation definition */
-/* Attribute validation policy for our echo command */
-static struct nla_policy echo_pol[GENLTEST_A_MAX + 1] = {
-	[GENLTEST_A_MSG] = { .type = NLA_NUL_STRING },
-};
-
 static struct genl_ops switchdev_genl_ops_echo[] = {
     {
         .cmd = SWITCHDEV_C_ECHO,
-        .policy = echo_pol,
+        .policy = switchdev_genl_policy,
         .doit = switchdev_echo,
     },
 };
 
-static struct genl_multicast_group switchdev_genl_mcgrp = {
+static struct genl_multicast_group switchdev_genl_mcgrp[] = {
     {
         .name = "SWITCHDEV_GRP",
     }
