@@ -138,7 +138,10 @@ static void genetlink_exit(void)
 /*****************************************************************************************/
 /*                             switchdev                                                 */
 /*****************************************************************************************/
-
+//forward declaration
+int switchdev_port_obj_attr_set_netlink(struct net_device *dev, const void *ctx,
+                  const struct switchdev_attr *attr,
+                  struct netlink_ext_ack *extack);
 
 static void bcm_fdb_event_work(struct work_struct *work)
 {
@@ -150,7 +153,7 @@ static void bcm_fdb_event_work(struct work_struct *work)
     switchdev_work = container_of(work, struct bcm_switchdev_event_work, work);
     dev = switchdev_work->dev;
 
-    printk("bcm_fdb_event_work event = %d \n", switchdev_work->event);
+    printk("bcm_fdb_event_work event = %ld \n", switchdev_work->event);
     rtnl_lock();
 
 #if 0
@@ -196,9 +199,9 @@ static int bcm_switchdev_event(struct notifier_block *unused,
     struct switchdev_notifier_info *info = ptr;
     struct bcm_switchdev_event_work *switchdev_work;
     struct net_device *upper;
-    //int err;
+    int err;
 
-    printk("bcm_switchdev_event event = %d\n", event);
+    printk("bcm_switchdev_event event = %ld\n", event);
     if (event == SWITCHDEV_PORT_ATTR_SET) {
         err = switchdev_handle_port_attr_set(dev, ptr,
                              bkn_port_dev_check,
@@ -303,6 +306,7 @@ int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
     
     return 0;
 }
+
 int switchdev_port_obj_attr_set_netlink(struct net_device *dev, const void *ctx,
                   const struct switchdev_attr *attr,
                   struct netlink_ext_ack *extack)
@@ -354,7 +358,7 @@ static int bcm_switchdev_blk_event(struct notifier_block *unused,
     struct net_device *dev = switchdev_notifier_info_to_dev(ptr);
     int err;
 
-    printk("bcm_switchdev_blk_event event = %d\n",event);
+    printk("bcm_switchdev_blk_event event = %ld\n",event);
     if (!dev) {
         printk("   dev is NULL\n");
         return NOTIFY_DONE;

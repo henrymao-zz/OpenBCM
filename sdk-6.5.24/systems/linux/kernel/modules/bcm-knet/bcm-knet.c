@@ -9457,7 +9457,7 @@ _init(void)
 static int
 _ioctl(unsigned int cmd, unsigned long arg)
 {
-    static bkn_ioctl_t io;
+    bkn_ioctl_t io;
     static kcom_msg_t kmsg;
 
     if (!module_initialized) {
