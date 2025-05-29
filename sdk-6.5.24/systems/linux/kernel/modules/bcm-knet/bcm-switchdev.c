@@ -150,6 +150,7 @@ static void bcm_fdb_event_work(struct work_struct *work)
     switchdev_work = container_of(work, struct bcm_switchdev_event_work, work);
     dev = switchdev_work->dev;
 
+    printk("bcm_fdb_event_work event = %d \n", switchdev_work->event);
     rtnl_lock();
 
 #if 0
@@ -199,12 +200,10 @@ static int bcm_switchdev_event(struct notifier_block *unused,
 
     printk("bcm_switchdev_event event = %d\n", event);
     if (event == SWITCHDEV_PORT_ATTR_SET) {
-#if 0
         err = switchdev_handle_port_attr_set(dev, ptr,
                              bkn_port_dev_check,
-                             bcm_port_obj_attr_set);
+                             switchdev_port_obj_attr_set_netlink);
         return notifier_from_errno(err);
-#endif
         return NOTIFY_DONE;
     }
 
@@ -249,20 +248,102 @@ int switchdev_port_obj_add_netlink(struct net_device *dev, const void *ctx,
                  const struct switchdev_obj *obj,
                  struct netlink_ext_ack *extack)
 {
-    printk("switchdev_port_obj_add_netlink \n");
+	const struct switchdev_obj_port_vlan *vlan;
+	const struct switchdev_obj_port_mdb *mdb;
+	int err = 0;
+
+    printk("switchdev_port_obj_add_netlink id = %d \n", obj->id);
+
+	switch (obj->id) {
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
+        printk("   vlan = %d\n",vlan->vid);
+        break;
+		//return prestera_port_vlans_add(port, vlan, extack);
+	case SWITCHDEV_OBJ_ID_PORT_MDB:
+		mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
+        printk("   vlan = %d\n",mdb->vid);
+		//err = prestera_mdb_port_addr_obj_add(mdb);
+		break;
+	case SWITCHDEV_OBJ_ID_HOST_MDB:
+		fallthrough;
+	default:
+		err = -EOPNOTSUPP;
+		break;
+	}
+
+    
     return 0;
 }
 int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
                  const struct switchdev_obj *obj)
 {
-    printk("switchdev_port_obj_del_netlink \n");
+	const struct switchdev_obj_port_mdb *mdb;
+    const struct switchdev_obj_port_vlan *vlan;
+	int err = 0;
+
+    printk("switchdev_port_obj_del_netlink id = %d\n", obj->id);
+
+	switch (obj->id) {
+	case SWITCHDEV_OBJ_ID_PORT_VLAN:
+        vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
+        printk("   vlan = %d\n",vlan->vid);
+        break;
+		//return prestera_port_vlans_del(port, SWITCHDEV_OBJ_PORT_VLAN(obj));
+	case SWITCHDEV_OBJ_ID_PORT_MDB:
+		mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
+        printk("   vlan = %d\n",mdb->vid);
+		//err = prestera_mdb_port_addr_obj_del(port, mdb);
+		break;
+	default:
+		err = -EOPNOTSUPP;
+		break;
+	}
+
+    
     return 0;
 }
 int switchdev_port_obj_attr_set_netlink(struct net_device *dev, const void *ctx,
                   const struct switchdev_attr *attr,
                   struct netlink_ext_ack *extack)
 {
-    printk("switchdev_port_obj_attr_set_netlink \n");
+	int err = 0;
+
+    printk("switchdev_port_obj_attr_set_netlink attr id = %d \n", attr->id);
+
+	switch (attr->id) {
+	case SWITCHDEV_ATTR_ID_PORT_STP_STATE:
+		//err = prestera_port_attr_stp_state_set(port, attr->orig_dev,
+		//				       attr->u.stp_state);
+		break;
+	case SWITCHDEV_ATTR_ID_PORT_PRE_BRIDGE_FLAGS:
+		//if (attr->u.brport_flags.mask &
+		//    ~(BR_LEARNING | BR_FLOOD | BR_MCAST_FLOOD | BR_PORT_LOCKED))
+		//	err = -EINVAL;
+		break;
+	case SWITCHDEV_ATTR_ID_PORT_BRIDGE_FLAGS:
+		//err = prestera_port_attr_br_flags_set(port, attr->orig_dev,
+		//				      attr->u.brport_flags);
+		break;
+	case SWITCHDEV_ATTR_ID_BRIDGE_AGEING_TIME:
+		//err = prestera_port_attr_br_ageing_set(port,
+		//				       attr->u.ageing_time);
+		break;
+	case SWITCHDEV_ATTR_ID_BRIDGE_VLAN_FILTERING:
+		//err = prestera_port_attr_br_vlan_set(port, attr->orig_dev,
+		//				     attr->u.vlan_filtering);
+		break;
+	case SWITCHDEV_ATTR_ID_PORT_MROUTER:
+		//err = prestera_port_attr_mrouter_set(port, attr->orig_dev,
+		//				     attr->u.mrouter);
+		break;
+	case SWITCHDEV_ATTR_ID_BRIDGE_MC_DISABLED:
+		//err = prestera_port_attr_br_mc_disabled_set(port, attr->orig_dev,
+		//					    attr->u.mc_disabled);
+		break;
+	default:
+		err = -EOPNOTSUPP;
+	}    
     return 0;
 }
 
