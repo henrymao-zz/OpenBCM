@@ -387,10 +387,42 @@ static int bcm_switchdev_blk_event(struct notifier_block *unused,
     return notifier_from_errno(err);
 }
 
+static int bcm_netdevice_event(struct notifier_block *unused,
+    unsigned long event, void *ptr)
+{
+    struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+	int err = 0;
+
+	if (!bkn_port_dev_check(dev))
+		return 0;
+
+    printk("bcm_netdevice_event event = %ld\n", event);
+
+	switch (event) {
+	case NETDEV_CHANGEUPPER:
+		//err = sparx5_port_changeupper(dev, ptr);
+
+		break;
+	case NETDEV_PRE_UP:
+		//err = sparx5_port_add_addr(dev, true);
+		break;
+	case NETDEV_DOWN:
+		//err = sparx5_port_add_addr(dev, false);
+		break;
+	}
+
+	return err;
+}
 
 static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
 {
     int err;
+
+
+    swdev->netdev_nb.notifier_call = bcm_netdevice_event;
+	err = register_netdevice_notifier(&swdev->netdevice_nb);
+	if (err)
+		goto err_register_netdev_notifier;
 
     swdev->swdev_nb.notifier_call = bcm_switchdev_event;
     err = register_switchdev_notifier(&swdev->swdev_nb);
@@ -410,6 +442,9 @@ err_register_blk_swdev_notifier:
     unregister_switchdev_notifier(&swdev->swdev_nb);
 err_register_swdev_notifier:
     printk("bcm_switchdev_handler_init non blk failed %d\n", err);
+    unregister_switchdev_notifier(&swdev->netdev_nb);
+err_register_netdev_notifier:
+    printk("bcm_switchdev_handler_init netdev failed %d\n", err);
     destroy_workqueue(swdev_wq);
     return err;
 }
@@ -474,6 +509,7 @@ int bcm_switchdev_uninit(void)
 {
     genetlink_exit();
 
+    unregister_switchdev_notifier(&swdev->netdev_nb);
     unregister_switchdev_notifier(&swdev->swdev_nb);
     unregister_switchdev_blocking_notifier(&swdev->swdev_nb_blk);
 

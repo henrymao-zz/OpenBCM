@@ -24,6 +24,7 @@ struct bcm_switchdev {
 	bool bridge_8021q_exists;
 	struct notifier_block swdev_nb_blk;
 	struct notifier_block swdev_nb;
+    struct notifier_block netdev_nb;
 };
 
 
