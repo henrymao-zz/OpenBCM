@@ -117,7 +117,7 @@ static int switchdev_ipc_msg_send(struct switchdev_ipc_msg *msg)
 	genlmsg_end(skb, nlh);
 	ret = genlmsg_unicast(&init_net, skb, switchdev_u_pid);
 	if (!ret) {
-		ipc_update_last_active();
+		switchdev_ipc_update_last_active();
     }
 	return ret;
 
@@ -126,13 +126,13 @@ out:
 	return ret;
 }
 
-statc int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
+static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 {
 	struct switchdev_ipc_msg *msg;
     struct switchdev_netdev_event *netdev_event;
 	int ret;
 
-	msg = ipc_msg_alloc(sizeof(struct switchdev_netdev_event));
+	msg = switchdev_ipc_msg_alloc(sizeof(struct switchdev_netdev_event));
 	if (!msg)
 		return -EINVAL;
 
@@ -141,8 +141,8 @@ statc int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
     netdev_event->event = event;
     strscpy(netdev_event->name, dev->name, sizeof(netdev_event->name));
 
-	ret = ipc_msg_send(msg);
-	ipc_msg_free(msg);
+	ret = switchdev_ipc_msg_send(msg);
+	switchdev_ipc_msg_free(msg);
 	return ret;
 }
 
@@ -501,7 +501,7 @@ static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
 
 
     swdev->netdev_nb.notifier_call = bcm_netdevice_event;
-    err = register_netdevice_notifier(&swdev->netdevice_nb);
+    err = register_netdevice_notifier(&swdev->netdev_nb);
     if (err)
         goto err_register_netdev_notifier;
 
