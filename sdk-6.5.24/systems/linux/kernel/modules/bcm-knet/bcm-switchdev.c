@@ -31,6 +31,9 @@ static struct bcm_switchdev *swdev = NULL;
 /*****************************************************************************************/
 /*                             netlink                                                   */
 /*****************************************************************************************/
+static unsigned int switchdev_u_pid = 0;
+struct switchdev_server_config server_conf;
+
 static int switchdev_echo(struct sk_buff *skb, struct genl_info *info);
 
 /* operation definition */
@@ -60,6 +63,88 @@ static struct genl_family switchdev_genl_family = {
     .mcgrps = switchdev_genl_mcgrp,
     .n_mcgrps = ARRAY_SIZE(switchdev_genl_mcgrp),
 };
+
+static void switchdev_ipc_update_last_active(void)
+{
+	if (server_conf.ipc_timeout) {
+		server_conf.ipc_last_active = jiffies;
+    }
+}
+
+
+static struct switchdev_ipc_msg *switchdev_ipc_msg_alloc(size_t sz)
+{
+	struct switchdev_ipc_msg *msg;
+	size_t msg_sz = sz + sizeof(struct switchdev_ipc_msg);
+
+	msg = kvzalloc(msg_sz, GFP_KERNEL);
+	if (msg)
+		msg->sz = sz;
+	return msg;
+}
+
+static void switchdev_ipc_msg_free(struct switchdev_ipc_msg *msg)
+{
+	kvfree(msg);
+}
+
+
+static int switchdev_ipc_msg_send(struct switchdev_ipc_msg *msg)
+{
+	struct genlmsghdr *nlh;
+	struct sk_buff *skb;
+	int ret = -EINVAL;
+
+	if (!switchdev_u_pid) {
+        printk("switchdev_ipc_msg_send no userspace daemon connected\n");
+		return ret;
+    }
+
+	skb = genlmsg_new(msg->sz, GFP_KERNEL);
+	if (!skb)
+		return -ENOMEM;
+
+	nlh = genlmsg_put(skb, 0, 0, &switchdev_genl_family, 0, msg->type);
+	if (!nlh)
+		goto out;
+
+	ret = nla_put(skb, msg->type, msg->sz, msg->payload);
+	if (ret) {
+		genlmsg_cancel(skb, nlh);
+		goto out;
+	}
+
+	genlmsg_end(skb, nlh);
+	ret = genlmsg_unicast(&init_net, skb, switchdev_u_pid);
+	if (!ret) {
+		ipc_update_last_active();
+    }
+	return ret;
+
+out:
+	nlmsg_free(skb);
+	return ret;
+}
+
+statc int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
+{
+	struct switchdev_ipc_msg *msg;
+    struct switchdev_netdev_event *netdev_event;
+	int ret;
+
+	msg = ipc_msg_alloc(sizeof(struct switchdev_netdev_event));
+	if (!msg)
+		return -EINVAL;
+
+	msg->type = SWITCHDEV_EVENT_NETDEV;
+    netdev_event = (struct switchdev_netdev_event *)msg->payload;
+    netdev_event->event = event;
+    strscpy(netdev_event->name, dev->name, sizeof(netdev_event->name));
+    
+	ret = ipc_msg_send(msg);
+	ipc_msg_free(msg);
+	return ret;
+}
 
 static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 {
@@ -104,12 +189,19 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 	/* Finalize the message and send it */
 	genlmsg_end(msg, hdr);
 
+    if (switchdev_u_pid != info->snd_portid) {
+        switchdev_u_pid = info->snd_portid;
+        printk("Connect to new user space daemon %d\n", switchdev_u_pid);
+    }
+
 	ret = genlmsg_reply(msg, info);
 	printk("reply sent\n");
 
 out:
 	return ret;
 }
+
+//TODO, add heartbeat
 
 
 static int genetlink_init(void)
@@ -398,18 +490,7 @@ static int bcm_netdevice_event(struct notifier_block *unused,
 
     printk("bcm_netdevice_event event = %ld\n", event);
 
-	switch (event) {
-	case NETDEV_CHANGEUPPER:
-		//err = sparx5_port_changeupper(dev, ptr);
-
-		break;
-	case NETDEV_PRE_UP:
-		//err = sparx5_port_add_addr(dev, true);
-		break;
-	case NETDEV_DOWN:
-		//err = sparx5_port_add_addr(dev, false);
-		break;
-	}
+    switchdev_netdev_event_send(event, dev);
 
 	return err;
 }

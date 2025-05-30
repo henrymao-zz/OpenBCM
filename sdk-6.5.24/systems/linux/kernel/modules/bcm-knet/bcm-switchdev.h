@@ -48,9 +48,36 @@ static struct nla_policy switchdev_genl_policy[SWITCHDEV_A_MAX + 1] = {
 enum {
     SWITCHDEV_C_UNSPEC,
     SWITCHDEV_C_ECHO,
+	SWITCHDEV_C_IPC,
     __SWITCHDEV_C_MAX,
 };
 #define SWITCHDEV_C_MAX (__SWITCHDEV_C_MAX - 1)
+
+struct switchdev_ipc_msg {
+	unsigned int		type;
+	unsigned int		sz;
+	unsigned char		payload[];
+};
+
+
+struct switchdev_server_config {
+	unsigned int		flags;
+	unsigned int		state;
+	short			    signing;
+	unsigned short		ipc_timeout;
+	unsigned long		ipc_last_active;
+};
+
+enum switchdev_event {
+    SWITCHDEV_EVENT_UNSPEC			= 0,
+	SWITCHDEV_EVENT_NETDEV			= 1,
+};
+
+
+struct switchdev_netdev_event {
+	uint8_t  name[16];
+	uint32_t event;
+};
 
 
 
