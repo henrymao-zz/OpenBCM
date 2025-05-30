@@ -32,18 +32,33 @@ static struct bcm_switchdev *swdev = NULL;
 /*                             netlink                                                   */
 /*****************************************************************************************/
 static unsigned int switchdev_u_pid = 0;
+static struct net *switchdev_net = NULL;
 struct switchdev_server_config server_conf;
 
-static int switchdev_echo(struct sk_buff *skb, struct genl_info *info);
+static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info);
 
 /* operation definition */
-static struct genl_ops switchdev_genl_ops_echo[] = {
+static struct genl_ops switchdev_genl_ops[] = {
     {
-        .cmd = SWITCHDEV_C_ECHO,
-        .policy = switchdev_genl_policy,
-        .doit = switchdev_echo,
+        .cmd = SWITCHDEV_EVENT_ECHO,
+        .doit = handle_switchdev_echo,
     },
 };
+
+
+
+static const struct nla_policy switchdev_nl_policy[SWITCHDEV_EVENT_MAX + 1] = {
+	[SWITCHDEV_EVENT_UNSPEC] = {
+		.len = 0,
+	},
+	[SWITCHDEV_EVENT_ECHO] = {
+        .type = NLA_NUL_STRING
+	},
+	[SWITCHDEV_EVENT_NETDEV] = {
+        .len = sizeof(struct switchdev_netdev_event),
+	},
+};
+
 
 static struct genl_multicast_group switchdev_genl_mcgrp[] = {
     {
@@ -52,16 +67,20 @@ static struct genl_multicast_group switchdev_genl_mcgrp[] = {
 };
 
 
+
 /* netlink family definition */
 static struct genl_family switchdev_genl_family = {
-    .hdrsize = 0,             
-    .name = "SWITCHDEV",      
-    .version = 1,
-    .maxattr = SWITCHDEV_A_MAX,
-    .ops = switchdev_genl_ops_echo,
-    .n_ops = ARRAY_SIZE(switchdev_genl_ops_echo),
-    .mcgrps = switchdev_genl_mcgrp,
+    .hdrsize  = 0,             
+    .name     = "SWITCHDEV",      
+    .version  = 1,
+    .maxattr  = SWITCHDEV_EVENT_MAX,
+    .module   = THIS_MODULE,
+    .netnsok  = true,
+    .ops      = switchdev_genl_ops,
+    .n_ops    = ARRAY_SIZE(switchdev_genl_ops),
+    .mcgrps   = switchdev_genl_mcgrp,
     .n_mcgrps = ARRAY_SIZE(switchdev_genl_mcgrp),
+    .policy   = switchdev_nl_policy,
 };
 
 static void switchdev_ipc_update_last_active(void)
@@ -115,9 +134,12 @@ static int switchdev_ipc_msg_send(struct switchdev_ipc_msg *msg)
 	}
 
 	genlmsg_end(skb, nlh);
-	ret = genlmsg_unicast(&init_net, skb, switchdev_u_pid);
+	ret = genlmsg_unicast(switchdev_net, skb, switchdev_u_pid);
 	if (!ret) {
+        printk("switchdev_ipc_msg_send success\n");
 		switchdev_ipc_update_last_active();
+    } else {
+        printk("switchdev_ipc_msg_send failed %d\n", ret);
     }
 	return ret;
 
@@ -146,7 +168,7 @@ static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 	return ret;
 }
 
-static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
+static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 {
     /* message handling code goes here; return 0 on success, negative values on failure */
     char *str;
@@ -155,8 +177,8 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
     void           *hdr;
 
     /* Check if the attribute is present and print it */
-    if (info->attrs[SWITCHDEV_A_MSG]) {
-    	char *str = nla_data(info->attrs[SWITCHDEV_A_MSG]);
+    if (info->attrs[SWITCHDEV_EVENT_ECHO]) {
+    	char *str = nla_data(info->attrs[SWITCHDEV_EVENT_ECHO]);
     	printk("switchdev_echo message received: %s\n", str);
     } else {
     	printk("switchdev_echo empty message received\n");
@@ -171,14 +193,14 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 
 	/* Put the Generic Netlink header */
 	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq, &switchdev_genl_family, 0,
-                      SWITCHDEV_C_ECHO);
+                      SWITCHDEV_EVENT_ECHO);
 	if (!hdr) {
 		printk("failed to create genetlink header\n");
 		nlmsg_free(msg);
 		return -EMSGSIZE;
 	}
 	/* And the message */
-	if ((ret = nla_put_string(msg, SWITCHDEV_A_MSG,
+	if ((ret = nla_put_string(msg, SWITCHDEV_EVENT_ECHO,
 				  "Hello from Kernel Space, Netlink!"))) {
         printk("failed to create message string\n");
 		genlmsg_cancel(msg, hdr);
@@ -191,7 +213,8 @@ static int switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 
     if (switchdev_u_pid != info->snd_portid) {
         switchdev_u_pid = info->snd_portid;
-        printk("Connect to new user space daemon %d\n", switchdev_u_pid);
+        switchdev_net = genl_info_net(info);
+        printk("Connect to new user space daemon 0x%x\n", switchdev_u_pid);
     }
 
 	ret = genlmsg_reply(msg, info);
@@ -488,7 +511,7 @@ static int bcm_netdevice_event(struct notifier_block *unused,
     if (!bkn_port_dev_check(dev))
         return 0;
 
-    printk("bcm_netdevice_event event = %ld\n", event);
+    printk("bcm_netdevice_event %s event = %ld\n", dev->name, event);
 
     switchdev_netdev_event_send(event, dev);
 

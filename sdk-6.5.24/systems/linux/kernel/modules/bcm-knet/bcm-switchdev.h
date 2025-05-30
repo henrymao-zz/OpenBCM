@@ -28,30 +28,17 @@ struct bcm_switchdev {
 };
 
 
-/* netlink attributes */
+/* commands  
+ * also used as NETLINK attribute type value
+ */
 enum {
-    SWITCHDEV_A_UNSPEC,
-    SWITCHDEV_A_MSG,
-    __SWITCHDEV_A_MAX,
+    SWITCHDEV_EVENT_UNSPEC = 0,
+    SWITCHDEV_EVENT_ECHO,
+	SWITCHDEV_EVENT_NETDEV,
+
+    __SWITCHDEV_EVENT_MAX,
+    SWITCHDEV_EVENT_MAX = __SWITCHDEV_EVENT_MAX - 1
 };
-
-#define SWITCHDEV_A_MAX (__SWITCHDEV_A_MAX - 1)
- 
-/* attribute policy */
-static struct nla_policy switchdev_genl_policy[SWITCHDEV_A_MAX + 1] = {
-      [SWITCHDEV_A_MAX] = { .type = NLA_NUL_STRING },
-
-};
-
-
-/* commands  */
-enum {
-    SWITCHDEV_C_UNSPEC,
-    SWITCHDEV_C_ECHO,
-	SWITCHDEV_C_IPC,
-    __SWITCHDEV_C_MAX,
-};
-#define SWITCHDEV_C_MAX (__SWITCHDEV_C_MAX - 1)
 
 struct switchdev_ipc_msg {
 	unsigned int		type;
@@ -66,11 +53,6 @@ struct switchdev_server_config {
 	short			    signing;
 	unsigned short		ipc_timeout;
 	unsigned long		ipc_last_active;
-};
-
-enum switchdev_event {
-    SWITCHDEV_EVENT_UNSPEC			= 0,
-	SWITCHDEV_EVENT_NETDEV			= 1,
 };
 
 
