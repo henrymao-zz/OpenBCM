@@ -123,7 +123,7 @@ static int switchdev_ipc_msg_send(struct switchdev_ipc_msg *msg)
 	if (!skb)
 		return -ENOMEM;
 
-	nlh = genlmsg_put(skb, 0, 0, &switchdev_genl_family, 0, msg->type);
+	nlh = genlmsg_put(skb, switchdev_u_pid, 0, &switchdev_genl_family, 0, msg->type);
 	if (!nlh)
 		goto out;
 
