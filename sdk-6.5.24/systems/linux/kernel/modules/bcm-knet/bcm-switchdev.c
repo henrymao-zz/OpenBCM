@@ -140,7 +140,7 @@ statc int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
     netdev_event = (struct switchdev_netdev_event *)msg->payload;
     netdev_event->event = event;
     strscpy(netdev_event->name, dev->name, sizeof(netdev_event->name));
-    
+
 	ret = ipc_msg_send(msg);
 	ipc_msg_free(msg);
 	return ret;
@@ -483,16 +483,16 @@ static int bcm_netdevice_event(struct notifier_block *unused,
     unsigned long event, void *ptr)
 {
     struct net_device *dev = netdev_notifier_info_to_dev(ptr);
-	int err = 0;
+    int err = 0;
 
-	if (!bkn_port_dev_check(dev))
-		return 0;
+    if (!bkn_port_dev_check(dev))
+        return 0;
 
     printk("bcm_netdevice_event event = %ld\n", event);
 
     switchdev_netdev_event_send(event, dev);
 
-	return err;
+    return err;
 }
 
 static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
@@ -501,9 +501,9 @@ static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
 
 
     swdev->netdev_nb.notifier_call = bcm_netdevice_event;
-	err = register_netdevice_notifier(&swdev->netdevice_nb);
-	if (err)
-		goto err_register_netdev_notifier;
+    err = register_netdevice_notifier(&swdev->netdevice_nb);
+    if (err)
+        goto err_register_netdev_notifier;
 
     swdev->swdev_nb.notifier_call = bcm_switchdev_event;
     err = register_switchdev_notifier(&swdev->swdev_nb);
@@ -590,7 +590,7 @@ int bcm_switchdev_uninit(void)
 {
     genetlink_exit();
 
-    unregister_switchdev_notifier(&swdev->netdev_nb);
+    unregister_netdevice_notifier(&swdev->netdev_nb);
     unregister_switchdev_notifier(&swdev->swdev_nb);
     unregister_switchdev_blocking_notifier(&swdev->swdev_nb_blk);
 
