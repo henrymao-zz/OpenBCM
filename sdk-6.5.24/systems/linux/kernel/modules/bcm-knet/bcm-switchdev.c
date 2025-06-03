@@ -35,14 +35,19 @@ static unsigned int switchdev_u_pid = 0;
 static struct net *switchdev_net = NULL;
 struct switchdev_server_config server_conf;
 
-static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info);
+static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *info);
+static int handle_switchdev_start(struct sk_buff *skb, struct genl_info *info);
 
 /* operation definition */
 static struct genl_ops switchdev_genl_ops[] = {
     {
-        .cmd = SWITCHDEV_EVENT_ECHO,
-        .doit = handle_switchdev_echo,
+        .cmd = SWITCHDEV_EVENT_KEEPALIVE,
+        .doit = handle_switchdev_keepalive,
     },
+    {
+        .cmd = SWITCHDEV_EVENT_START,
+        .doit = handle_switchdev_start,
+    },    
 };
 
 
@@ -51,9 +56,12 @@ static const struct nla_policy switchdev_nl_policy[SWITCHDEV_EVENT_MAX + 1] = {
 	[SWITCHDEV_EVENT_UNSPEC] = {
 		.len = 0,
 	},
-	[SWITCHDEV_EVENT_ECHO] = {
+	[SWITCHDEV_EVENT_KEEPALIVE] = {
         .type = NLA_NUL_STRING
 	},
+	[SWITCHDEV_EVENT_START] = {
+        .len = 0,
+	},    
 	[SWITCHDEV_EVENT_NETDEV] = {
         .len = sizeof(struct switchdev_netdev_event),
 	},
@@ -168,7 +176,7 @@ static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 	return ret;
 }
 
-static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info)
+static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *info)
 {
     /* message handling code goes here; return 0 on success, negative values on failure */
     char *str;
@@ -177,11 +185,11 @@ static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info)
     void           *hdr;
 
     /* Check if the attribute is present and print it */
-    if (info->attrs[SWITCHDEV_EVENT_ECHO]) {
-    	char *str = nla_data(info->attrs[SWITCHDEV_EVENT_ECHO]);
-    	printk("switchdev_echo message received: %s\n", str);
+    if (info->attrs[SWITCHDEV_EVENT_KEEPALIVE]) {
+    	char *str = nla_data(info->attrs[SWITCHDEV_EVENT_KEEPALIVE]);
+    	printk("switchdev_keepalive message received: %s\n", str);
     } else {
-    	printk("switchdev_echo empty message received\n");
+    	printk("switchdev_keepalive empty message received\n");
     }
 
     /* Allocate a new buffer for the reply */
@@ -193,19 +201,55 @@ static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info)
 
 	/* Put the Generic Netlink header */
 	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq, &switchdev_genl_family, 0,
-                      SWITCHDEV_EVENT_ECHO);
+                      SWITCHDEV_EVENT_KEEPALIVE);
 	if (!hdr) {
 		printk("failed to create genetlink header\n");
 		nlmsg_free(msg);
 		return -EMSGSIZE;
 	}
 	/* And the message */
-	if ((ret = nla_put_string(msg, SWITCHDEV_EVENT_ECHO,
+	if ((ret = nla_put_string(msg, SWITCHDEV_EVENT_KEEPALIVE,
 				  "Hello from Kernel Space, Netlink!"))) {
         printk("failed to create message string\n");
 		genlmsg_cancel(msg, hdr);
 		nlmsg_free(msg);
 		goto out;
+	}
+
+	/* Finalize the message and send it */
+	genlmsg_end(msg, hdr);
+
+	ret = genlmsg_reply(msg, info);
+	printk("reply sent\n");
+
+out:
+	return ret;
+}
+
+
+
+static int handle_switchdev_start(struct sk_buff *skb, struct genl_info *info)
+{
+    /* message handling code goes here; return 0 on success, negative values on failure */
+    char *str;
+    int   ret;
+    struct sk_buff *msg;
+    void           *hdr;
+
+    /* Allocate a new buffer for the reply */
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (!msg) {
+		printk("failed to allocate message buffer\n");
+		return -ENOMEM;
+	}
+
+	/* Put the Generic Netlink header */
+	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq, &switchdev_genl_family, 0,
+                      SWITCHDEV_EVENT_START);
+	if (!hdr) {
+		printk("failed to create genetlink header\n");
+		nlmsg_free(msg);
+		return -EMSGSIZE;
 	}
 
 	/* Finalize the message and send it */
@@ -218,13 +262,12 @@ static int handle_switchdev_echo(struct sk_buff *skb, struct genl_info *info)
     }
 
 	ret = genlmsg_reply(msg, info);
-	printk("reply sent\n");
+	printk("start reply sent\n");
 
 out:
 	return ret;
 }
 
-//TODO, add heartbeat
 
 
 static int genetlink_init(void)
