@@ -30,7 +30,7 @@
  * Handler for all received messages from our Generic Netlink family, both
  * unicast and multicast.
  */
-static int echo_reply_handler(struct nl_msg *msg, void *arg)
+static int message_handler(struct nl_msg *msg, void *arg)
 {
 	int		   err	   = 0;
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
@@ -45,19 +45,19 @@ static int echo_reply_handler(struct nl_msg *msg, void *arg)
 		return NL_SKIP;
 	}
 	/* Check that there's actually a payload */
-	if (!tb[SWITCHDEV_EVENT_ECHO]) {
+	if (!tb[SWITCHDEV_EVENT_KEEPALIVE]) {
 		prerr("msg attribute missing from message\n");
 		return NL_SKIP;
 	}
 
 	/* Print it! */
-	printf("message received: %s\n", nla_get_string(tb[SWITCHDEV_EVENT_ECHO]));
+	printf("message received: %s\n", nla_get_string(tb[SWITCHDEV_EVENT_KEEPALIVE]));
 
 	return NL_OK;
 }
 
-/* Send (unicast) SWITCHDEV_EVENT_ECHO request message */
-static int send_echo_msg(struct nl_sock *sk, int fam)
+/* Send (unicast) SWITCHDEV_EVENT_KEEPALIVE request message */
+static int send_keepalive_msg(struct nl_sock *sk, int fam)
 {
 	int	       err = 0;
 	struct nl_msg *msg = nlmsg_alloc();
@@ -67,17 +67,44 @@ static int send_echo_msg(struct nl_sock *sk, int fam)
 
 	/* Put the genl header inside message buffer */
 	void *hdr = genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, fam, 0, 0,
-				SWITCHDEV_EVENT_ECHO, SWITCHDEV_GENL_VERSION);
+				SWITCHDEV_EVENT_KEEPALIVE, SWITCHDEV_GENL_VERSION);
 	if (!hdr) {
 		return -EMSGSIZE;
 	}
 
 	/* Put the string inside the message. */
-	err = nla_put_string(msg, SWITCHDEV_EVENT_ECHO,
+	err = nla_put_string(msg, SWITCHDEV_EVENT_KEEPALIVE,
 			     "Hello from User Space, Netlink!");
 	if (err < 0) {
 		return -err;
 	}
+	printf("message sent\n");
+
+	/* Send the message. */
+	err = nl_send_auto(sk, msg);
+	err = err >= 0 ? 0 : err;
+
+	nlmsg_free(msg);
+
+	return err;
+}
+
+/* Send (unicast) SWITCHDEV_EVENT_START request message */
+static int send_start_msg(struct nl_sock *sk, int fam)
+{
+	int	       err = 0;
+	struct nl_msg *msg = nlmsg_alloc();
+	if (!msg) {
+		return -ENOMEM;
+	}
+
+	/* Put the genl header inside message buffer */
+	void *hdr = genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, fam, 0, 0,
+				SWITCHDEV_EVENT_START, SWITCHDEV_GENL_VERSION);
+	if (!hdr) {
+		return -EMSGSIZE;
+	}
+
 	printf("message sent\n");
 
 	/* Send the message. */
@@ -111,7 +138,7 @@ static void disconn(struct nl_sock *sk)
 static inline int set_cb(struct nl_sock *sk)
 {
 	return nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM,
-				   echo_reply_handler, NULL);
+				   message_handler, NULL);
 }
 
 int main(void)
@@ -162,12 +189,17 @@ int main(void)
 		goto out;
 	}
 
-	/* Send unicast message and listen for response. */
-	if ((ret = send_echo_msg(ucsk, fam))) {
+    // send start and listen for response
+   	if ((ret = send_start_msg(ucsk, fam))) {
 		prerr("failed to send message: %s\n", strerror(-ret));
 	}
 	printf("listening for messages\n");
-	//nl_recvmsgs_default(ucsk);
+	nl_recvmsgs_default(ucsk);
+
+	/* Send unicast message and listen for response. */
+	if ((ret = send_keepalive_msg(ucsk, fam))) {
+		prerr("failed to send message: %s\n", strerror(-ret));
+	}
 
 	/* Listen for "notifications". */
 	while (1) {

@@ -15,7 +15,8 @@
  */
 enum {
     SWITCHDEV_EVENT_UNSPEC = 0,                                                                                             
-    SWITCHDEV_EVENT_ECHO,
+    SWITCHDEV_EVENT_KEEPALIVE,
+    SWITCHDEV_EVENT_START,
     SWITCHDEV_EVENT_NETDEV,                                                                                                 
     
     __SWITCHDEV_EVENT_MAX,
