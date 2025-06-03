@@ -239,6 +239,7 @@ ESW_DIAG_LIBS += libtsint.$(libext)
 ESW_DIAG_LIBS += libtshistogram.$(libext)
 ESW_DIAG_LIBS += libtsalpm.$(libext)
 ESW_DIAG_LIBS += libtscancun.$(libext)
+ESW_DIAG_LIBS += libtsflowtracker.$(libext)
 endif
 
 ifdef LTSW_CHIPS
