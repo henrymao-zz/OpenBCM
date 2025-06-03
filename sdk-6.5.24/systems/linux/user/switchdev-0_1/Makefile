@@ -41,7 +41,7 @@ $(error Internal error: platform variable is not set)
 endif
 
 include $(SDK)/make/Make.config
-LOCALDIR=systems/linux/user/opennsa_ut
+LOCALDIR=systems/linux/user/switchdev-0_1
 include $(SDK)/make/Make.depend
 kernel-override=linux-$(platform)
 ifdef BLDCONFIG
@@ -72,7 +72,7 @@ ifeq ($(BCM_LIBDIR),)
 BCM_LIBDIR := $(LIBDIR)/lib
 endif
 
-BCM_LOCAL := demo_opennsa_init.$(targetplat)$(all_suffix)
+BCM_LOCAL := switchdev_init.$(targetplat)$(all_suffix)
 BCM := $(DEST_DIR)/$(BCM_LOCAL)
 
 BCMLT_ISSUDLL_LOCAL := libsdkissu.so.$(SDKLT_VER)
@@ -481,7 +481,7 @@ ifeq ($(C_CPP_CODE_MIX), TRUE)
 LINKER := $(CXX)
 endif
 
-$(BCM).dbg: user_libs $(PLI) $(BLDDIR)/demo_opennsa_init.o $(BLDDIR)/version.o \
+$(BCM).dbg: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/version.o \
 	${PLATFORM_DEFINES_OBJ}
 	@rm -f $@	# Prevent core dump if currently running
 ifeq (1,$(LINK_STATIC))
@@ -489,7 +489,7 @@ ifeq (1,$(LINK_STATIC))
 else
 	@echo Linking $@ dynamically # This is needed for error parsing
 endif
-	$(LINKER) $(CFLAGS) -o $@ $(BLDDIR)/demo_opennsa_init.o $(BLDDIR)/version.o \
+	$(LINKER) $(CFLAGS) -o $@ $(BLDDIR)/switchdev_init.o $(BLDDIR)/version.o \
 	-Wl,--start-group ${PLATFORM_DEFINES_OBJ} $(BCM_LIBS_BLD)  -Wl,--end-group $(LDFLAGS)
 
 $(BCM_ISSUDLL) $(BCMLT_ISSUDLL) : $(BCM)
@@ -523,7 +523,7 @@ $(foreach targ,$(LOCAL_TARGETS),$(eval $(call LOCAL_TARGET_DEF,$(targ))))
 endif
 
 # Build Version
-$(BLDDIR)/version.c: $(BLDDIR)/demo_opennsa_init.o user_libs
+$(BLDDIR)/version.c: $(BLDDIR)/switchdev_init.o user_libs
 	$(PERL) $(SDK)/tools/version.pl > $@
 $(BLDDIR)/version.o: $(BLDDIR)/version.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -556,7 +556,7 @@ endif
 		override-target=linux-$(platform) $@
 	$(RM) $(BLDDIR)/version.c $(BLDDIR)/version.o
 	$(RM) $(BLDDIR)/platform_defines.c $(BLDDIR)/platform_defines.o
-	$(RM) $(BLDDIR)/demo_opennsa_init.o
+	$(RM) $(BLDDIR)/switchdev_init.o
 	$(RM) $(KERNEL_BDE) $(USER_BDE) $(BCM) $(BCM).dbg
 	$(RM) $(BCM_KNET)
 ifdef BUILD_SDKLT

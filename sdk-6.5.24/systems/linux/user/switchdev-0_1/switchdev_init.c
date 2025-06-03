@@ -1,17 +1,3 @@
-/*
- * 
- * This license is set out in https://raw.githubusercontent.com/Broadcom-Network-Switching-Software/OpenBCM/master/Legal/LICENSE file.
- * 
- * Copyright 2007-2021 Broadcom Inc. All rights reserved.
- *
- * demo_opennsa_init: A simple diagnostic utility to verify OpenNSA library.
- *
- * The only thing that is does is that it scans the bus, attaches
- * all recognized Broadcom devices and attempts to perform soc_init(),
- * soc_misc_init(), soc_mmu_init() and bcm_init() on each attached
- * unit.
- */
-
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>

@@ -44,9 +44,9 @@ export SDK
 ADD_TO_CFLAGS :=$(shell cat $$SDK/RELEASE | awk -F '[^0-9]*' {'print "-DOPENNSA_VERSION_MAJOR=" $$2, "-DOPENNSA_VERSION_MINOR=" $$3, "-DOPENNSA_VERSION_PATCH=" $$4'} )
 
 override kernel_version=4_19
-platform=opennsa
+platform=switchdev
 LINUX_MAKE_USER=1
-LINUX_MAKE_DIR=$(SDK)/systems/linux/user/opennsa_ut
+LINUX_MAKE_DIR=$(SDK)/systems/linux/user/switchdev-0_1
 export LINKER_RELAX = 1
 ADD_TO_CFLAGS += -frecord-gcc-switches -fPIC
 export ADD_TO_CFLAGS
@@ -75,35 +75,16 @@ Example:\n\
 	rsync -a --files-from=$(SDK)/FILES.opennsa $(SDK) $(DEST)
 	mv $(DEST)/include/opennsa $(DEST)/include/bcm
 	mkdir -p $(DEST)/src/diag
-	rsync -a $(LINUX_MAKE_DIR)/demo_opennsa_init.c $(DEST)/src/diag
+	rsync -a $(LINUX_MAKE_DIR)/switchdev_init.c $(DEST)/src/diag
 	rsync -a $(LINUX_MAKE_DIR)/Makefile.external $(DEST)/src/diag/Makefile
-	cp $(SDK)/build/unix-user/opennsa/version.c $(DEST)/src/diag
+	cp $(SDK)/build/unix-user/switchdev/version.c $(DEST)/src/diag
 # XGS section
 	mkdir -p $(DEST)/lib/x86-64
-	cp --dereference $(SDK)/build/linux/user/opennsa/libopennsa.a $(DEST)/lib/x86-64
-	cp --dereference $(SDK)/build/linux/user/opennsa/*.so* $(DEST)/lib/x86-64
+	cp --dereference $(SDK)/build/linux/user/switchdev/libopennsa.a $(DEST)/lib/x86-64
+	cp --dereference $(SDK)/build/linux/user/switchdev/*.so* $(DEST)/lib/x86-64
 	cp --dereference $(SDK)/rc/yaml/bcm56990_a0/bcm56990_a0-generic-64x400.config.yml $(DEST)/src/diag/bcm56990_config.yml
 	perl $(SDK)/tools/bcm2c.pl $(SDK)/rc/config_th3_32x400.bcm > $(DEST)/src/diag/config_init_defaults.c
 # end of XGS section
-# DNX section
-ifneq ("$(wildcard $(SDK)/build/unix-user-opennsa/wrx-opennsa)","")
-	rsync -a $(LINUX_MAKE_DIR)/demo_opennsa_init_dpp.c $(DEST)/src/diag
-	mkdir -p $(DEST)/lib/mips-BCM9XLP2_XMC_A1
-	mkdir -p $(DEST)/lib/x86-64-fc28
-	cp --dereference $(SDK)/build/unix-user-opennsa/wrx-opennsa/libopennsa.a $(DEST)/lib/mips-BCM9XLP2_XMC_A1
-	cp --dereference $(SDK)/build/unix-user-opennsa/wrx-opennsa/libopennsa.so $(DEST)/lib/mips-BCM9XLP2_XMC_A1
-	cp --dereference $(SDK)/build/unix-user/x86-64-fc28/libopennsa.a $(DEST)/lib/x86-64-fc28
-	cp --dereference $(SDK)/build/unix-user/x86-64-fc28/libopennsa.so $(DEST)/lib/x86-64-fc28
-	perl $(SDK)/tools/bcm2c.pl $(SDK)/rc/config-dcmn.bcm > $(DEST)/src/diag/config_init_dpp_defaults.c
-	find $(SDK)/rc/config-jr2.bcm -type f -exec sed -i 's|dram_phy_tune_mode_on_init.BCM8869X=RESTORE_TUNE_PARAMETERS_FROM_SOC_PROPERTIES|dram_phy_tune_mode_on_init.BCM8869X=RUN_TUNE|g' {} \;
-	find $(SDK)/rc/config-j2c.bcm -type f -exec sed -i 's|dram_phy_tune_mode_on_init.BCM8880X=RESTORE_TUNE_PARAMETERS_FROM_SOC_PROPERTIES|dram_phy_tune_mode_on_init.BCM8880X=RUN_TUNE|g' {} \;
-	perl $(SDK)/tools/bcm2c.pl $(SDK)/rc/config-sand.bcm > $(DEST)/src/diag/config_init_dnx_defaults.c
-	find $(SDK)/rc/config-j2c.bcm -type f -exec sed -i 's|dram_phy_tune_mode_on_init.BCM8880X=RUN_TUNE|dram_phy_tune_mode_on_init.BCM8880X=RESTORE_TUNE_PARAMETERS_FROM_SOC_PROPERTIES|g' {} \;
-	find $(SDK)/rc/config-jr2.bcm -type f -exec sed -i 's|dram_phy_tune_mode_on_init.BCM8869X=RUN_TUNE|dram_phy_tune_mode_on_init.BCM8869X=RESTORE_TUNE_PARAMETERS_FROM_SOC_PROPERTIES|g' {} \;
-else
-	@echo WARNING: DNX devices are NOT included in the package!
-endif
-# end of DNX section
 	(cd $(DEST)/src; tar xfz $(GPL_SRC); mv *-gpl-modules gpl-modules)
 	cp $(SDK)/RELEASE $(DEST)
 	cd $(dir $(DEST)); tar cfz $(notdir $(DEST)).tar.gz $(notdir $(DEST))
