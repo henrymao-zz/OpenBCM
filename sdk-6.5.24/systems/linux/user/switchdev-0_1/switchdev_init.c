@@ -31,6 +31,8 @@
 #include <appl/diag/sysconf_ltsw.h>
 #endif
 
+#include <soc/esw/cancun.h>
+
 #ifdef LINUX_PLI_COMBO_BDE
 extern int plibde_create(ibde_t** bde);
 #endif
@@ -695,6 +697,14 @@ int main( int argc, char *argv[] )
                 rv = soc_reset_init( i );
                 printf( "%s: soc_reset_init( %d ), result=%d\n",
                         (rv) ? "FAIL" : "SUCCESS", i, rv );
+
+                if (soc_feature(unit, soc_feature_cancun)) {
+                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CMH), "load cmh");
+                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CCH), "load cch");
+                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CEH), "load ceh");
+                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CIH), "load cih");
+                }
+
 #endif /* BCM_DNX_SUPPORT */
                 rv = soc_misc_init( i );
                 printf( "%s: soc_misc_init( %d ), result=%d\n",
