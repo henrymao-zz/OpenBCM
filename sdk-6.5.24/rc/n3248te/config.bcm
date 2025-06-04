@@ -8,6 +8,7 @@ ifa_enable=0
 ifp_inports_support_enable=1
 ipv6_lpm_128b_enable=0x1
 l2xmsg_mode=1
+parity_enable=0
 
 #Default L3 profile
 

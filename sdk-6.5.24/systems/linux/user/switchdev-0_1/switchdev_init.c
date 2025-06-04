@@ -31,7 +31,24 @@
 #include <appl/diag/sysconf_ltsw.h>
 #endif
 
-#include <soc/esw/cancun.h>
+//#include <soc/esw/cancun.h>
+/*
+ * CANCUN file type enumeration
+*/
+typedef enum {
+    CANCUN_SOC_FILE_TYPE_UNKNOWN,
+    CANCUN_SOC_FILE_TYPE_CIH,
+    CANCUN_SOC_FILE_TYPE_CMH,
+    CANCUN_SOC_FILE_TYPE_CCH,
+    CANCUN_SOC_FILE_TYPE_CFH,
+    CANCUN_SOC_FILE_TYPE_CEH,
+    CANCUN_SOC_FILE_TYPE_ISPF,
+
+    /*Note: keep CANCUN_SOC_FILE_TYPE_NUM as the latest element of this enum
+     * and update CANCUN_FILE_TYPE_NAMES_INITIALIZER accordingly*/
+    CANCUN_SOC_FILE_TYPE_NUM
+} soc_cancun_file_type_e;
+extern int soc_cancun_generic_load(int unit, uint32 cancun_type);
 
 #ifdef LINUX_PLI_COMBO_BDE
 extern int plibde_create(ibde_t** bde);
@@ -698,12 +715,23 @@ int main( int argc, char *argv[] )
                 printf( "%s: soc_reset_init( %d ), result=%d\n",
                         (rv) ? "FAIL" : "SUCCESS", i, rv );
 
-                if (soc_feature(unit, soc_feature_cancun)) {
-                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CMH), "load cmh");
-                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CCH), "load cch");
-                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CEH), "load ceh");
-                    SYSTEM_INIT_CHECK(soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CIH), "load cih");
-                }
+                rv = soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CMH);
+                printf( "%s: soc_cancun_generic_load( %d CMH), result=%d\n",
+                        (rv) ? "FAIL" : "SUCCESS", i, rv );
+
+                rv = soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CCH);
+                printf( "%s: soc_cancun_generic_load( %d CCH), result=%d\n",
+                        (rv) ? "FAIL" : "SUCCESS", i, rv );
+
+
+                rv = soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CEH);
+                printf( "%s: soc_cancun_generic_load( %d CEH), result=%d\n",
+                        (rv) ? "FAIL" : "SUCCESS", i, rv );
+
+
+                rv = soc_cancun_generic_load(i, CANCUN_SOC_FILE_TYPE_CIH);
+                printf( "%s: soc_cancun_generic_load( %d CIH), result=%d\n",
+                        (rv) ? "FAIL" : "SUCCESS", i, rv );
 
 #endif /* BCM_DNX_SUPPORT */
                 rv = soc_misc_init( i );
