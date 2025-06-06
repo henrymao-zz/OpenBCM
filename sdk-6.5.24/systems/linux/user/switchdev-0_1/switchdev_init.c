@@ -50,6 +50,9 @@ typedef enum {
 } soc_cancun_file_type_e;
 extern int soc_cancun_generic_load(int unit, uint32 cancun_type);
 
+//linkscan
+extern int bcm_common_linkscan_enable_set(int unit, int us);
+
 #ifdef LINUX_PLI_COMBO_BDE
 extern int plibde_create(ibde_t** bde);
 #endif
@@ -466,6 +469,8 @@ _sysconf_attach( int unit )
 
 int do_per_switch_setup(int unit)
 {
+    int rv = BCM_E_NONE;
+
     /* Just an example of things that can be done. */
 
     /*
@@ -484,6 +489,13 @@ int do_per_switch_setup(int unit)
     BCM_PBMP_ITER(port_config.hg, port) {
         BCM_IF_ERROR_RETURN(bcm_port_stp_set(unit, port, BCM_STG_STP_FORWARD));
     }
+
+
+    //Enable linkscan
+    rv = bcm_common_linkscan_enable_set(unit, 250000);
+    printf( "%s: bcm_common_linkscan_enable_set( %d ), result=%d\n",
+            (rv) ? "FAIL" : "SUCCESS", unit, rv );
+
 
     return 0;
 }

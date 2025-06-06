@@ -124,13 +124,13 @@ static int _gmodule_proc_release(struct inode * inode, struct file * file) {
     return single_release(inode, file);
 }
 
-struct file_operations _gmodule_proc_fops = {
-    .owner =      THIS_MODULE,
-    .open =       _gmodule_proc_open,
-    .read =       seq_read,
-    .llseek =     seq_lseek,
-    .write =      _gmodule_proc_write,
-    .release =    _gmodule_proc_release,
+struct proc_ops _gmodule_proc_fops = {
+    //PROC_OWNER(THIS_MODULE)
+    .proc_open    =       _gmodule_proc_open,
+    .proc_read    =       seq_read,
+    .proc_lseek   =       seq_lseek,
+    .proc_write   =       _gmodule_proc_write,
+    .proc_release =       _gmodule_proc_release,
 };
 #else
 int
@@ -253,6 +253,7 @@ _gmodule_unlocked_ioctl(struct file *filp,
     if(_gmodule->ioctl) {
 	return _gmodule->ioctl(cmd, arg);
     } else {
+        printk("_gmodule_unlocked_ioctl NULL\n");
 	return -1;
     }
 }
@@ -263,6 +264,7 @@ _gmodule_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     if(_gmodule->ioctl) {
 	return _gmodule->ioctl(cmd, arg);
     } else {
+        printk("_gmodule_compat_ioctl NULL\n");
 	return -1;
     }
 }

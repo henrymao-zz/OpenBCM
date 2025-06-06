@@ -6871,13 +6871,13 @@ bkn_proc_link_write(struct file *file, const char *buf,
     return count;
 }
 
-struct file_operations bkn_proc_link_file_ops = {
-    owner:      THIS_MODULE,
-    open:       bkn_proc_link_open,
-    read:       seq_read,
-    llseek:     seq_lseek,
-    write:      bkn_proc_link_write,
-    release:    single_release,
+struct proc_ops bkn_proc_link_file_ops = {
+    //owner:      THIS_MODULE,
+    .proc_open    =   bkn_proc_link_open,
+    .proc_read    =   seq_read,
+    .proc_lseek   =   seq_lseek,
+    .proc_write   =   bkn_proc_link_write,
+    .proc_release =   single_release,
 };
 
 /*
@@ -6981,13 +6981,13 @@ bkn_proc_rate_write(struct file *file, const char *buf,
     return count;
 }
 
-struct file_operations bkn_proc_rate_file_ops = {
-    owner:      THIS_MODULE,
-    open:       bkn_proc_rate_open,
-    read:       seq_read,
-    llseek:     seq_lseek,
-    write:      bkn_proc_rate_write,
-    release:    single_release,
+struct proc_ops bkn_proc_rate_file_ops = {
+    //owner:      THIS_MODULE,
+    .proc_open    =     bkn_proc_rate_open,
+    .proc_read    =     seq_read,
+    .proc_lseek   =     seq_lseek,
+    .proc_write   =     bkn_proc_rate_write,
+    .proc_release =     single_release,
 };
 
 
@@ -7232,12 +7232,12 @@ bkn_seq_dma_open(struct inode *inode, struct file *file)
     return seq_open(file, &bkn_seq_dma_ops);
 };
 
-static struct file_operations bkn_seq_dma_file_ops = {
-    .owner   = THIS_MODULE,
-    .open    = bkn_seq_dma_open,
-    .read    = seq_read,
-    .llseek  = seq_lseek,
-    .release = seq_release
+static struct proc_ops bkn_seq_dma_file_ops = {
+    //.owner   = THIS_MODULE,
+    .proc_open    = bkn_seq_dma_open,
+    .proc_read    = seq_read,
+    .proc_lseek   = seq_lseek,
+    .proc_release = seq_release
 };
 
 /*
@@ -7369,13 +7369,13 @@ static int bkn_proc_debug_open(struct inode * inode, struct file * file)
     return single_open(file, bkn_proc_debug_show, NULL);
 }
 
-struct file_operations bkn_proc_debug_file_ops = {
-    owner:      THIS_MODULE,
-    open:       bkn_proc_debug_open,
-    read:       seq_read,
-    llseek:     seq_lseek,
-    write:      bkn_proc_debug_write,
-    release:    single_release,
+struct proc_ops bkn_proc_debug_file_ops = {
+    //owner:      THIS_MODULE,
+    .proc_open    =     bkn_proc_debug_open,
+    .proc_read    =     seq_read,
+    .proc_lseek   =     seq_lseek,
+    .proc_write   =     bkn_proc_debug_write,
+    .proc_release =     single_release,
 };
 
 /*
@@ -7498,13 +7498,13 @@ bkn_proc_stats_write(struct file *file, const char *buf,
     return count;
 }
 
-struct file_operations bkn_proc_stats_file_ops = {
-    owner:      THIS_MODULE,
-    open:       bkn_proc_stats_open,
-    read:       seq_read,
-    llseek:     seq_lseek,
-    write:      bkn_proc_stats_write,
-    release:    single_release,
+struct proc_ops bkn_proc_stats_file_ops = {
+    //owner:      THIS_MODULE,
+    .proc_open    =    bkn_proc_stats_open,
+    .proc_read    =    seq_read,
+    .proc_lseek   =    seq_lseek,
+    .proc_write   =    bkn_proc_stats_write,
+    .proc_release =    single_release,
 };
 
 
@@ -7675,13 +7675,13 @@ bkn_proc_dstats_write(struct file *file, const char *buf,
     return count;
 }
 
-struct file_operations bkn_proc_dstats_file_ops = {
-    owner:      THIS_MODULE,
-    open:       bkn_proc_dstats_open,
-    read:       seq_read,
-    llseek:     seq_lseek,
-    write:      bkn_proc_dstats_write,
-    release:    single_release,
+struct proc_ops bkn_proc_dstats_file_ops = {
+    //owner:      THIS_MODULE,
+    .proc_open    =    bkn_proc_dstats_open,
+    .proc_read    =    seq_read,
+    .proc_lseek   =    seq_lseek,
+    .proc_write   =    bkn_proc_dstats_write,
+    .proc_release =    single_release,
 };
 
 /*
@@ -7783,13 +7783,13 @@ bkn_proc_ptp_stats_write(struct file *file, const char *buf, size_t count, loff_
     return count;
 }
 
-struct file_operations bkn_proc_ptp_stats_file_ops = {
-    owner:      THIS_MODULE,
-    open:       bkn_proc_ptp_stats_open,
-    read:       seq_read,
-    llseek:     seq_lseek,
-    write:      bkn_proc_ptp_stats_write,
-    release:    single_release,
+struct proc_ops bkn_proc_ptp_stats_file_ops = {
+    //owner:      THIS_MODULE,
+    .proc_open    =        bkn_proc_ptp_stats_open,
+    .proc_read    =        seq_read,
+    .proc_lseek   =        seq_lseek,
+    .proc_write   =        bkn_proc_ptp_stats_write,
+    .proc_release =        single_release,
 };
 
 
@@ -8989,7 +8989,6 @@ bkn_knet_wb_cleanup(kcom_msg_wb_cleanup_t *kmsg, int len)
 static int
 bkn_handle_cmd_req(kcom_msg_t *kmsg, int len)
 {
-    int i;
     /* Silently drop events and unrecognized message types */
     if (kmsg->hdr.type != KCOM_MSG_TYPE_CMD) {
         if (kmsg->hdr.opcode == KCOM_M_STRING) {
