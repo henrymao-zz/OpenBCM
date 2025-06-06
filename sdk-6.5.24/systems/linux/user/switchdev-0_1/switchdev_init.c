@@ -31,6 +31,8 @@
 #include <appl/diag/sysconf_ltsw.h>
 #endif
 
+#include <opennsa/link.h>
+
 //#include <soc/esw/cancun.h>
 /*
  * CANCUN file type enumeration
@@ -496,6 +498,22 @@ int do_per_switch_setup(int unit)
     printf( "%s: bcm_inkscan_enable_set( %d ), result=%d\n",
             (rv) ? "FAIL" : "SUCCESS", unit, rv );
 
+
+    BCM_PBMP_ITER(port_config.port, port) {
+        int autoneg, pause_tx, pause_rx;
+        BCM_IF_ERROR_RETURN(bcm_linkscan_mode_set(unit, port,
+                                                BCM_LINKSCAN_MODE_SW));
+        autoneg = TRUE;
+        BCM_IF_ERROR_RETURN(bcm_port_autoneg_set(unit, port, autoneg));
+
+        if (BCM_PBMP_MEMBER(port_config.hg, port)) {
+            pause_tx = pause_rx = FALSE;
+        } else {
+            pause_tx = pause_rx = TRUE;
+        }
+        BCM_IF_ERROR_RETURN(bcm_port_pause_set(unit, port, pause_tx, pause_rx));
+        BCM_IF_ERROR_RETURN(bcm_stat_clear(unit, port));
+    }
 
     return 0;
 }
