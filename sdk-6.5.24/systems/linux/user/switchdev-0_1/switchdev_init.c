@@ -51,7 +51,7 @@ typedef enum {
 extern int soc_cancun_generic_load(int unit, uint32 cancun_type);
 
 //linkscan
-extern int bcm_common_linkscan_enable_set(int unit, int us);
+extern int bcm_linkscan_enable_set(int unit, int us);
 
 #ifdef LINUX_PLI_COMBO_BDE
 extern int plibde_create(ibde_t** bde);
@@ -492,8 +492,8 @@ int do_per_switch_setup(int unit)
 
 
     //Enable linkscan
-    rv = bcm_common_linkscan_enable_set(unit, 250000);
-    printf( "%s: bcm_common_linkscan_enable_set( %d ), result=%d\n",
+    rv = bcm_linkscan_enable_set(unit, 250000);
+    printf( "%s: bcm_inkscan_enable_set( %d ), result=%d\n",
             (rv) ? "FAIL" : "SUCCESS", unit, rv );
 
 
