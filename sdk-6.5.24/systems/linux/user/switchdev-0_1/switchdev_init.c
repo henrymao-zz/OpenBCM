@@ -560,6 +560,36 @@ uint32 pci_config_getw(pci_dev_t *dev, uint32 addr)
 }
 #endif /* NO_SAL_APPL */
 
+/* switchdev netlink thread */
+static int switchdev_netlink_thread_priority = 100;
+static volatile sal_thread_t switchdev_netlink_thread_id        = SAL_THREAD_ERROR;
+
+extern int switchdev_netlink_main(void);
+
+static void
+switchdev_netlink_thread(void *cookie)
+{
+    COMPILER_REFERENCE(cookie);
+
+    switchdev_netlink_main();
+
+    sal_thread_exit(0);
+}
+
+void switchdev_netlink_init(void)
+{
+    switchdev_netlink_thread_id = sal_thread_create("bcmATP-RX",
+                                         SAL_THREAD_STKSZ,
+                                         switchdev_netlink_thread_priority,
+                                         switchdev_netlink_thread, NULL);
+    if (switchdev_netlink_thread_id == SAL_THREAD_ERROR) {
+        sal_thread_destroy(switchdev_netlink_thread_id);
+        switchdev_netlink_thread_id = SAL_THREAD_ERROR;
+        return BCM_E_MEMORY;
+    }
+    return BCM_E_NONE;
+}
+
 /*
  * Main loop.
  */
@@ -818,6 +848,9 @@ int main( int argc, char *argv[] )
     /* Initialize diag shell so we can use it later on. */
     diag_init();
     cmdlist_init();
+
+    /* Initialize netlink to switchdev kernel module */
+    switchdev_netlink_init();
 
     while (1) {
         sh_process(-1, "BCM", TRUE);
