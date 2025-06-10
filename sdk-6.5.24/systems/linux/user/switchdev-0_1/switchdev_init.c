@@ -563,7 +563,12 @@ uint32 pci_config_getw(pci_dev_t *dev, uint32 addr)
 /*
  * Main loop.
  */
+#ifdef LIB_SWITCHDEV
+int switch_start(void) 
+
+#else
 int main( int argc, char *argv[] )
+#endif
 {
     int i;
     uint32 flags;
@@ -576,6 +581,9 @@ int main( int argc, char *argv[] )
     sim_path = sal_ctoi(getenv("BCM_SIM_PATH"), 0);
 #endif
 
+#ifdef LIB_SWITCHDEV
+
+#else
 #if defined(BCM_LTSW_SUPPORT)
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-y") == 0) {
@@ -591,6 +599,7 @@ int main( int argc, char *argv[] )
         }
     }
 #endif
+#endif
 
     if (sal_core_init() < 0
 #ifndef NO_SAL_APPL
@@ -603,6 +612,9 @@ int main( int argc, char *argv[] )
         exit( 1 );
     }
 
+#ifdef LIB_SWITCHDEV
+
+#else
     for( i = 1; i < argc; i++ ){
         if( !strcmp(argv[i], "-r") || !strcmp(argv[i], "--reload") ){
             sal_boot_flags_set( sal_boot_flags_get() | BOOT_F_RELOAD );
@@ -619,6 +631,7 @@ int main( int argc, char *argv[] )
 #endif
         }
     }
+#endif
 
 #ifdef INCLUDE_KNET
     knet_kcom_config();

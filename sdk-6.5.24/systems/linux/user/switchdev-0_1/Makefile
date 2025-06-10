@@ -100,6 +100,8 @@ KERNEL_NGKNET := $(DEST_DIR)/$(KERNEL_NGKNET_LOCAL)
 
 OPENNSA = libopennsa.a libopennsa.so
 
+LIBBCM = libbcm.so
+
 LOCAL_TARGET_PATH := $(realpath ..)/$(platform)
 
 # Kernel modules
@@ -127,6 +129,8 @@ endif
 # Libraries to be released
 LIB_TARGETS := $(patsubst %,$(DEST_DIR)/%,$(OPENNSA))
 LOCAL_LIB_TARGETS := $(patsubst %,$(realpath ..)/$(platform)/%,$(OPENNSA))
+
+LIBBCM_TARGETS := $(patsubst %,$(realpath ..)/$(platform)/%,$(LIBBCM))
 
 ifeq (,$(findstring DELIVER,$(MAKECMDGOALS)))
 
@@ -170,7 +174,7 @@ COND_KNET_LIBS = libuser.$(libext)
 endif # BUILD_KNET
 
 ifeq ($(NO_LOCAL_TARGETS),)
-LOCAL_TARGETS := $(LOCAL_KERNEL_TARGETS) $(LOCAL_BCM_TARGETS) $(LOCAL_LIB_TARGETS)
+LOCAL_TARGETS := $(LOCAL_KERNEL_TARGETS) $(LOCAL_BCM_TARGETS) $(LOCAL_LIB_TARGETS) $(LIBBCM_TARGETS)
 all_targets := $(LOCAL_TARGETS)
 else
 LOCAL_TARGETS :=
@@ -471,6 +475,10 @@ $(DEST_DIR)/libopennsa.a: $(BCM) $(DEST_DIR)
 
 $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
+
+$(DEST_DIR)/libbcm.so: $(BCM) $(DEST_DIR)
+	gcc -shared $(CFLAGS) -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(BLDDIR)/switchdev_init.o $(BLDDIR)/version.o \
+	-Wl,--no-whole-archive -L $(DEST_DIR) -lopennsa -o $@
 
 $(BCM): $(BCM).dbg
 	mkdir -p $(@D)
