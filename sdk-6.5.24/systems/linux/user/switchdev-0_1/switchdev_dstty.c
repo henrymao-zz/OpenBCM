@@ -26,7 +26,7 @@
      va_copy(args2, args1); // va_list cannot be used twice, copy it
      vsyslog(priority, format, args1);
 
-     auto f = (priority & LOG_PRIMASK) <= LOG_WARNING ? stderr : stdout;
+     FILE *f = (priority & LOG_PRIMASK) <= LOG_WARNING ? stderr : stdout;
      fprintf(f, "[%d] ", priority);
      vfprintf(f, format, args2);
      va_end(args2);

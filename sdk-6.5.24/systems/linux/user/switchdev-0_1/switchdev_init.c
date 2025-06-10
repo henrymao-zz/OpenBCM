@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <pty.h>
+#include <errno.h>
 
 #ifndef NO_SAL_APPL
 #include <sal/appl/sal.h>
@@ -561,6 +563,7 @@ uint32 pci_config_getw(pci_dev_t *dev, uint32 addr)
 #endif /* NO_SAL_APPL */
 
 /* switchdev netlink thread */
+#if 0
 static int switchdev_netlink_thread_priority = 100;
 static volatile sal_thread_t switchdev_netlink_thread_id        = SAL_THREAD_ERROR;
 
@@ -589,13 +592,13 @@ int switchdev_netlink_init(void)
     }
     return BCM_E_NONE;
 }
-
+#endif
 
 /* switchdev tty thread */
 static int switchdev_dstty_thread_priority = 100;
 static volatile sal_thread_t switchdev_dstty_thread_id        = SAL_THREAD_ERROR;
 
-extern int switchdev_dstty_main(void);
+extern int switchdev_dstty_main(int ttyfd);
 
 static void
 switchdev_dstty_thread(void *ttyfd_ptr)
@@ -635,7 +638,7 @@ int main( int argc, char *argv[] )
     int i;
     uint32 flags;
     int rv = BCM_E_NONE;
-    int ttyfs, int appfd;
+    int ttyfd, appfd;
 #if defined(BCM_LTSW_SUPPORT)
     int cfg_file_idx = 0;
 #endif

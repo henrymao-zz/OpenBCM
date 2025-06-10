@@ -11,8 +11,8 @@ DRV_LIBS_DYN = -lopennsa
 
 all: switchdev_init switchdev_init_dyn
 
-switchdev_init: switchdev_init.c version.c config_init_defaults.c $(SDK)/lib/x86-64/libopennsa.a
+switchdev_init: switchdev_init.c switchdev_dstty.c version.c config_init_defaults.c $(SDK)/lib/x86-64/libopennsa.a
 	gcc -I$(SDK)/include -I$(SDK)/src/gpl-modules/systems/bde/linux/include -I$(SDK)/src/gpl-modules/include -DBCM_ESW_SUPPORT -DBCM_LTSW_SUPPORT -DBCM_WARM_BOOT_SUPPORT -DSYS_BE_PIO=0 -DSYS_BE_PACKET=0 -DSYS_BE_OTHER=0 -DLE_HOST=1 -o $@ $^ -L$(SDK)/lib/x86-64 -L$(YAML)/lib64 -Xlinker -R$(YAML)/lib64 $(DRV_LIBS_SHELL) -lrt -pthread -lm -ldl -lyaml
 
-switchdev_init_dyn: switchdev_init.c version.c config_init_defaults.c $(SDK)/lib/x86-64/libopennsa.so
+switchdev_init_dyn: switchdev_init.c switchdev_dstty.c version.c config_init_defaults.c $(SDK)/lib/x86-64/libopennsa.so
 	gcc -I$(SDK)/include -I$(SDK)/src/gpl-modules/systems/bde/linux/include -I$(SDK)/src/gpl-modules/include -DBCM_ESW_SUPPORT -DBCM_LTSW_SUPPORT -DBCM_WARM_BOOT_SUPPORT -DSYS_BE_PIO=0 -DSYS_BE_PACKET=0 -DSYS_BE_OTHER=0 -DLE_HOST=1 -o $@ $^ -L$(SDK)/lib/x86-64 -L$(YAML)/lib64 -Xlinker -R$(YAML)/lib64 $(DRV_LIBS_DYN) -lrt -pthread -lm -ldl -lyaml
