@@ -576,7 +576,7 @@ switchdev_netlink_thread(void *cookie)
     sal_thread_exit(0);
 }
 
-void switchdev_netlink_init(void)
+int switchdev_netlink_init(void)
 {
     switchdev_netlink_thread_id = sal_thread_create("bcmATP-RX",
                                          SAL_THREAD_STKSZ,
