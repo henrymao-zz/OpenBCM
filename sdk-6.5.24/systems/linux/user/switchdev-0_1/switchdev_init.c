@@ -590,6 +590,38 @@ int switchdev_netlink_init(void)
     return BCM_E_NONE;
 }
 
+
+/* switchdev tty thread */
+static int switchdev_dstty_thread_priority = 100;
+static volatile sal_thread_t switchdev_dstty_thread_id        = SAL_THREAD_ERROR;
+
+extern int switchdev_dstty_main(void);
+
+static void
+switchdev_dstty_thread(void *ttyfd_ptr)
+{
+    int ttyfd = PTR_TO_INT(ttyfd_ptr);
+
+    switchdev_dstty_main(ttyfd);
+
+    sal_thread_exit(0);
+}
+
+int switchdev_dstty_init(int ttyfd)
+{
+    switchdev_dstty_thread_id = sal_thread_create("dstty",
+                                         SAL_THREAD_STKSZ,
+                                         switchdev_dstty_thread_priority,
+                                         switchdev_dstty_thread, INT_TO_PTR(ttyfd));
+    if (switchdev_dstty_thread_id == SAL_THREAD_ERROR) {
+        sal_thread_destroy(switchdev_dstty_thread_id);
+        switchdev_dstty_thread_id = SAL_THREAD_ERROR;
+        return BCM_E_MEMORY;
+    }
+    return BCM_E_NONE;
+}
+
+
 /*
  * Main loop.
  */
@@ -603,6 +635,7 @@ int main( int argc, char *argv[] )
     int i;
     uint32 flags;
     int rv = BCM_E_NONE;
+    int ttyfs, int appfd;
 #if defined(BCM_LTSW_SUPPORT)
     int cfg_file_idx = 0;
 #endif
@@ -850,7 +883,18 @@ int main( int argc, char *argv[] )
     cmdlist_init();
 
     /* Initialize netlink to switchdev kernel module */
-    switchdev_netlink_init();
+    //switchdev_netlink_init();
+
+     /* Get a pseudo tty */
+    if (openpty(&ttyfd, &appfd, NULL, NULL, NULL) < 0) {
+        printf("open pty: %s", strerror(errno));
+    }
+    switchdev_dstty_init(ttyfd);
+
+    /* redirect appfd */
+    dup2(appfd, 0);
+    dup2(appfd, 1);
+    dup2(appfd, 2);    
 
     while (1) {
         sh_process(-1, "BCM", TRUE);
