@@ -9206,7 +9206,7 @@ _cleanup(void)
     module_initialized = 0;
 
     //TODO switchdev cleanup
-    bcm_switchdev_uninit();
+    //bcm_switchdev_uninit();
 
     bkn_proc_cleanup();
     remove_proc_entry("bcm/knet", NULL);
@@ -9446,7 +9446,7 @@ _init(void)
     init_waitqueue_head(&evt->evt_wq);
 
     /* TODO: switchdev related,  move to separate module*/
-    bcm_switchdev_init();
+    //bcm_switchdev_init();
 
     module_initialized = 1;
 

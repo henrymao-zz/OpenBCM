@@ -479,7 +479,7 @@ $(DEST_DIR)/libopennsa.a: $(BCM) $(DEST_DIR)
 $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
 
-$(DEST_DIR)/libbcm.so: $(DEST_DIR)
+$(DEST_DIR)/libbcm.so: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
 	$(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
 	-lopennsa -o $@
@@ -493,7 +493,7 @@ ifeq ($(C_CPP_CODE_MIX), TRUE)
 LINKER := $(CXX)
 endif
 
-$(BCM).dbg: user_libs $(PLI) $(LIBBCM_TARGETS) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o \
+$(BCM).dbg: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o \
 	${PLATFORM_DEFINES_OBJ}
 	@rm -f $@	# Prevent core dump if currently running
 ifeq (1,$(LINK_STATIC))
