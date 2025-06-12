@@ -23,5 +23,11 @@ enum {
     SWITCHDEV_EVENT_MAX = __SWITCHDEV_EVENT_MAX - 1                                                                         
 };                                                                                                                          
 
+struct switchdev_netdev_event {
+	uint8_t  name[16];
+	uint32_t event;
+};
+
+
 
 #endif 

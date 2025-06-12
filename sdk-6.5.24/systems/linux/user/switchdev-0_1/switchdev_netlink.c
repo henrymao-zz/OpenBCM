@@ -30,6 +30,14 @@
  * Current libnl repo: https://github.com/thom311/libnl
  */
 
+ static int handle_netdev_event(void *ptr)
+ {
+    struct switchdev_netdev_event *netdev_event = (struct switchdev_netdev_event *)ptr;
+
+    printf("netdev event received %s event %d\n", netdev_event->name, netdev_event->event);
+	return 0;
+ }
+
 /*
  * Handler for all received messages from our Generic Netlink family, both
  * unicast and multicast.
@@ -39,7 +47,7 @@ static int message_handler(struct nl_msg *msg, void *arg)
 	int		   err	   = 0;
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
-
+	
 	/* Parse the attributes */
 	err = nla_parse(tb, SWITCHDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
 			genlmsg_attrlen(genlhdr, 0), NULL);
@@ -59,7 +67,8 @@ static int message_handler(struct nl_msg *msg, void *arg)
     }
 
     if (tb[SWITCHDEV_EVENT_NETDEV]) {
-       printf("netdev event received\n");
+       handle_netdev_event(tb[SWITCHDEV_EVENT_NETDEV]);
+	   return NL_OK;
     }
 
 	return NL_OK;
