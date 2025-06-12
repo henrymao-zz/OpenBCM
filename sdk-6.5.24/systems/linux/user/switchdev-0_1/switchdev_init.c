@@ -474,6 +474,8 @@ _sysconf_attach( int unit )
 int do_per_switch_setup(int unit)
 {
     int rv = BCM_E_NONE;
+    bcm_knet_netif_t netif;
+    bcm_knet_filter_t filter;    
 
     /* Just an example of things that can be done. */
 
@@ -516,6 +518,38 @@ int do_per_switch_setup(int unit)
         BCM_IF_ERROR_RETURN(bcm_port_pause_set(unit, port, pause_tx, pause_rx));
         BCM_IF_ERROR_RETURN(bcm_stat_clear(unit, port));
     }
+
+    //Create KNET interfaces
+    bcm_knet_netif_t_init(&netif);
+    sal_strncpy(netif.name, "Ethernet0", sizeof(netif.name) - 1);
+
+    netif.type = BCM_KNET_NETIF_T_TX_LOCAL_PORT;
+    netif.vlan = 1;
+    netif.port = 0;
+    // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
+    netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
+    netif.cb_user_data = if_cb_user_data;
+    if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
+        printf("Error creating network interface: %d\n",rv );
+    }
+
+    //Create filter for KNET interface
+    bcm_knet_filter_t_init(&filter);
+    filter.type = BCM_KNET_FILTER_T_RX_PKT;
+    sal_strncpy(filter.desc, "Ethernet0", sizeof(filter.desc) - 1);
+    filter.priority = 100;
+    filter.dest_type = BCM_KNET_DEST_T_NETIF;
+    filter.dest_id = 0;
+    filter.dest_proto = 0;
+
+    filter.cb_user_data = pf_cb_user_data;
+
+    filter.m_ingport = 1;
+    filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
+
+    if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
+        printf("Error creating packet filter: %d\n", rv);
+    }    
 
     return 0;
 }
