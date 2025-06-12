@@ -500,7 +500,7 @@ int knet_portconfig_init(int unit)
 
         bcm_knet_netif_t_init(&netif);
         netif.type = BCM_KNET_NETIF_T_TX_LOCAL_PORT;
-        netif.vlan = 1;
+        netif.vlan = 0;
         // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
         netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
         netif.cb_user_data = 0;
@@ -524,7 +524,7 @@ int knet_portconfig_init(int unit)
         sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
         filter.priority = 100;
         filter.dest_type = BCM_KNET_DEST_T_NETIF;
-        filter.dest_id = 0;
+        filter.dest_id = 1;
         filter.dest_proto = 0;
 
         filter.cb_user_data = 0;
