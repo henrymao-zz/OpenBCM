@@ -17,6 +17,9 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/family.h>
 
+#include <sys/epoll.h>
+#include <sys/timerfd.h>
+
 #include "switchdev_netlink.h"
 
 #define prerr(...) fprintf(stderr, "error: " __VA_ARGS__)
@@ -141,10 +144,18 @@ static inline int set_cb(struct nl_sock *sk)
 				   message_handler, NULL);
 }
 
+#define EPOLL_MAX_EVENTS 10
 int switchdev_netlink_main(void)
 {
 	int		ret = 1;
-	struct nl_sock *ucsk, *mcsk;
+	struct  nl_sock *ucsk, *mcsk;
+	int     ucsk_fd, mcsk_fd, timer_fd;
+	int     epoll_fd;
+    struct epoll_event ev, events[EPOLL_MAX_EVENTS];
+	struct itimerspec keepalive_value = {
+        .it_value = {1, 0},  
+        .it_interval = {1, 0}
+    };
 
 	/*
 	 * We use one socket to receive asynchronous "notifications" over
@@ -195,17 +206,50 @@ int switchdev_netlink_main(void)
 	}
 	printf("listening for messages\n");
 	nl_recvmsgs_default(ucsk);
+	
+	//TimerFD 
+    timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    timerfd_settime(tfd, 0, &keepalive_value, NULL);
 
-	/* Send unicast message and listen for response. */
-	if ((ret = send_keepalive_msg(ucsk, fam))) {
-		prerr("failed to send message: %s\n", strerror(-ret));
-	}
+    ucsk_fd = nl_socket_get_fd(ucsk);
+    set_nonblocking(ucsk_fd);
 
-	/* Listen for "notifications". */
-	while (1) {
-		nl_recvmsgs_default(ucsk);
-        //nl_recvmsgs_default(mcsk);
-	}
+	mcsk_fd = nl_socket_get_fd(mcsk);
+	set_nonblocking(mcsk_fd);
+
+    epoll_fd = epoll_create1(0);
+
+	if (epoll_fd < 0) {
+        perror("epoll_create1 failed");
+        goto out;
+    }
+
+    ev.events = EPOLLIN;
+    ev.data.fd = ucsk_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ucsk_fd, &ev);
+
+    ev.events = EPOLLIN;
+    ev.data.fd = mcsk_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, mcsk_fd, &ev);	
+
+	ev.events = EPOLLIN;
+    ev.data.fd = timer_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev);
+
+    while (1) {
+        int nfds = epoll_wait(epoll_fd, events, 10, -1);
+        for (int i = 0; i < nfds; i++) {
+            if (events[i].data.fd == ucsk_fd) {
+                nl_recvmsgs_default(ucsk);
+            } else if (events[i].data.fd == mcsk_fd) {
+                nl_recvmsgs_default(mcsk);
+			} else if (events[i].data.fd == timer_fd) {
+                send_keepalive_msg(usck, fam);
+			} else {
+               prerr("unknown event %d\n", events[i].data.fd);
+			}
+        }
+    }
 
 	ret = 0;
 out:
