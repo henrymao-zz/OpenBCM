@@ -473,41 +473,6 @@ _sysconf_attach( int unit )
 }
 
 
-uint8 * _port_config_buffer_load(char *filename, long *file_len) 
-{
-    FILE *fp = NULL;
-    uint8 *file_buf = NULL;
-
-    fp = sal_fopen(filename, "rb");
-    if (!fp) {
-        return NULL;
-    }
-
-    if(sal_fseek(fp, 0L, SEEK_END) != 0) {
-        goto _end_file_buffer_load;
-    }
-
-    *file_len = ftell(fp);
-    if(*file_len <= 0 || sal_fseek(fp, 0L, SEEK_SET) != 0) {
-        goto _end_file_buffer_load;
-    }
-
-    file_buf = (uint8*)sal_alloc(*file_len, "port_config_ini_buffer");
-    if(file_buf) {
-        if(sal_fread(file_buf, *file_len, 1, fp) <= 0) {
-            sal_free(file_buf);
-            file_buf = NULL;
-        }
-    }
-
-_end_file_buffer_load:
-    if(fp) {
-        sal_fclose(fp);
-    }
-
-    return file_buf;
-}
-
 //load port_config.ini and create interfaces
 int knet_portconfig_init(int unit)
 {
@@ -515,7 +480,8 @@ int knet_portconfig_init(int unit)
     bcm_knet_filter_t filter;    
     FILE *fp = NULL;
     char line[256];
-    char *token,
+    char *token;
+    int rv;
 
     /* open file, allocate buffer and read file into buffer */
     fp = sal_fopen("port_config.ini", "rb");
@@ -535,7 +501,7 @@ int knet_portconfig_init(int unit)
         netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
         netif.cb_user_data = 0;
 
-        token = strtok(str, " ");
+        token = strtok(line, " ");
         sal_strncpy(netif.name, token, sizeof(netif.name) - 1);
 
         token = strtok (NULL, " "); //lanes
@@ -568,6 +534,7 @@ int knet_portconfig_init(int unit)
     }
 
     fclose(fp);
+    return 0;
 }
 
 
