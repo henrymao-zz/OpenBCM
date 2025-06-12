@@ -94,6 +94,7 @@ static soc_chip_info_vectors_t chip_info_vect = {
 
 #include <soc/knet.h>
 #include <bcm-knet-kcom.h>
+#include <opennsa/knet.h>
 
 /* Function defined in linux-user-bde.c */
 extern int
@@ -528,7 +529,7 @@ int do_per_switch_setup(int unit)
     netif.port = 0;
     // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
     netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
-    netif.cb_user_data = if_cb_user_data;
+    netif.cb_user_data = 0;
     if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
         printf("Error creating network interface: %d\n",rv );
     }
@@ -542,7 +543,7 @@ int do_per_switch_setup(int unit)
     filter.dest_id = 0;
     filter.dest_proto = 0;
 
-    filter.cb_user_data = pf_cb_user_data;
+    filter.cb_user_data = 0;
 
     filter.m_ingport = 1;
     filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
