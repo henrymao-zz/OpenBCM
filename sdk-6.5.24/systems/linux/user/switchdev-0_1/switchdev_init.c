@@ -472,11 +472,109 @@ _sysconf_attach( int unit )
     return 0;
 }
 
+
+uint8 * _port_config_buffer_load(char *filename, long *file_len) 
+{
+    FILE *fp = NULL;
+    uint8 *file_buf = NULL;
+
+    fp = sal_fopen(filename, "rb");
+    if (!fp) {
+        return NULL;
+    }
+
+    if(sal_fseek(fp, 0L, SEEK_END) != 0) {
+        goto _end_file_buffer_load;
+    }
+
+    *file_len = ftell(fp);
+    if(*file_len <= 0 || sal_fseek(fp, 0L, SEEK_SET) != 0) {
+        goto _end_file_buffer_load;
+    }
+
+    file_buf = (uint8*)sal_alloc(*file_len, "port_config_ini_buffer");
+    if(file_buf) {
+        if(sal_fread(file_buf, *file_len, 1, fp) <= 0) {
+            sal_free(file_buf);
+            file_buf = NULL;
+        }
+    }
+
+_end_file_buffer_load:
+    if(fp) {
+        sal_fclose(fp);
+    }
+
+    return file_buf;
+}
+
+//load port_config.ini and create interfaces
+int knet_portconfig_init(int unit)
+{
+    bcm_knet_netif_t netif;
+    bcm_knet_filter_t filter;    
+    FILE *fp = NULL;
+    char line[256];
+    char *token,
+
+    /* open file, allocate buffer and read file into buffer */
+    fp = sal_fopen("port_config.ini", "rb");
+  
+    if (!fp) {
+       printf("port_config.ini open failed \n");
+       return 0;
+    }
+
+    while (fgets(line, sizeof(line), fp)) {
+        printf("%s", line);         //Name
+
+        bcm_knet_netif_t_init(&netif);
+        netif.type = BCM_KNET_NETIF_T_TX_LOCAL_PORT;
+        netif.vlan = 1;
+        // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
+        netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
+        netif.cb_user_data = 0;
+
+        token = strtok(str, " ");
+        sal_strncpy(netif.name, token, sizeof(netif.name) - 1);
+
+        token = strtok (NULL, " "); //lanes
+        token = strtok (NULL, " "); //alias
+        token = strtok (NULL, " "); //index
+        netif.port = atoi(token);
+
+        printf("Creating Interface %s index %d\n",netif.name, netif.port);
+        if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
+            printf("Error creating network interface: %d\n",rv );
+        }
+
+        //Create filter for KNET interface
+        bcm_knet_filter_t_init(&filter);
+        filter.type = BCM_KNET_FILTER_T_RX_PKT;
+        sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
+        filter.priority = 100;
+        filter.dest_type = BCM_KNET_DEST_T_NETIF;
+        filter.dest_id = 0;
+        filter.dest_proto = 0;
+
+        filter.cb_user_data = 0;
+
+        filter.m_ingport = netif.port;
+        filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
+
+        if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
+            printf("Error creating packet filter: %d\n", rv);
+        }    
+    }
+
+    fclose(fp);
+}
+
+
 int do_per_switch_setup(int unit)
 {
     int rv = BCM_E_NONE;
-    bcm_knet_netif_t netif;
-    bcm_knet_filter_t filter;    
+
 
     /* Just an example of things that can be done. */
 
@@ -521,36 +619,7 @@ int do_per_switch_setup(int unit)
     }
 
     //Create KNET interfaces
-    bcm_knet_netif_t_init(&netif);
-    sal_strncpy(netif.name, "Ethernet0", sizeof(netif.name) - 1);
-
-    netif.type = BCM_KNET_NETIF_T_TX_LOCAL_PORT;
-    netif.vlan = 1;
-    netif.port = 0;
-    // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
-    netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
-    netif.cb_user_data = 0;
-    if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
-        printf("Error creating network interface: %d\n",rv );
-    }
-
-    //Create filter for KNET interface
-    bcm_knet_filter_t_init(&filter);
-    filter.type = BCM_KNET_FILTER_T_RX_PKT;
-    sal_strncpy(filter.desc, "Ethernet0", sizeof(filter.desc) - 1);
-    filter.priority = 100;
-    filter.dest_type = BCM_KNET_DEST_T_NETIF;
-    filter.dest_id = 0;
-    filter.dest_proto = 0;
-
-    filter.cb_user_data = 0;
-
-    filter.m_ingport = 1;
-    filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
-
-    if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
-        printf("Error creating packet filter: %d\n", rv);
-    }    
+    knet_portconfig_init(unit);
 
     return 0;
 }
