@@ -492,7 +492,11 @@ int knet_portconfig_init(int unit)
     }
 
     while (fgets(line, sizeof(line), fp)) {
-        printf("%s", line);         //Name
+        //printf("%s", line);         //Name
+        // skip comments
+        if(line[0] == '#') {
+            continue;
+        }
 
         bcm_knet_netif_t_init(&netif);
         netif.type = BCM_KNET_NETIF_T_TX_LOCAL_PORT;
