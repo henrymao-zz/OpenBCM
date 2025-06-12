@@ -145,51 +145,32 @@
      return NULL;
  }
 
- static const char *const DEFAULT_SUN_PATH = "/var/run/sswsyncd/sswsyncd.socket";
- const char *sun_path = DEFAULT_SUN_PATH;
+static const char *const DEFAULT_SUN_PATH = "/var/run/sswsyncd/sswsyncd.socket";
+const char *sun_path = DEFAULT_SUN_PATH;
 
- int
- switchdev_dstty_main(int ttyfd)
- {
-     int rc;
-     pthread_t id;
+int
+switchdev_dstty_init(int ttyfd)
+{
+    int rc;
+    pthread_t id;
 
-     /* Broken pipes are not a problem */
-     signal(SIGPIPE, SIG_IGN);
+    /* Broken pipes are not a problem */
+    signal(SIGPIPE, SIG_IGN);
 
-     /* Setup server */
-     _server_socket = _setup_domain_socket(sun_path);
+    /* Setup server */
+    _server_socket = _setup_domain_socket(sun_path);
 
-     /* Start proxy for input */
-     if ((rc = pthread_create(&id, NULL, _ds2tty, (void *)&ttyfd)) < 0) {
-         syslog(LOG_ERR, "pthread_create: %s", strerror(rc));
-         exit(EXIT_FAILURE);
-     }
+    /* Start proxy for input */
+    if ((rc = pthread_create(&id, NULL, _ds2tty, (void *)&ttyfd)) < 0) {
+        syslog(LOG_ERR, "pthread_create: %s", strerror(rc));
+        exit(EXIT_FAILURE);
+    }
 
-     /* Start proxy for output */
-     if ((rc = pthread_create(&id, NULL, _tty2ds, (void *)&ttyfd)) < 0) {
-         syslog(LOG_ERR, "pthread_create: %s", strerror(rc));
-         exit(EXIT_FAILURE);
-     }
+    /* Start proxy for output */
+    if ((rc = pthread_create(&id, NULL, _tty2ds, (void *)&ttyfd)) < 0) {
+        syslog(LOG_ERR, "pthread_create: %s", strerror(rc));
+        exit(EXIT_FAILURE);
+    }
 
-     /* Wait for our child to exit */
-     int status;
-     waitpid(id, &status, 0);
-     syslog(LOG_NOTICE, "child %s exited status: %d", "tty2ds", status);
-
-     if (WIFEXITED(status))
-     {
-         if (WEXITSTATUS(status))
-         {
-             return 2;
-         }
-         else
-         {
-             return 0;
-         }
-     }
-     else
-     {
-         return 3;
-     }
- }
+    return rc;
+}
