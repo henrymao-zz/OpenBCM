@@ -185,12 +185,12 @@ static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *inf
     void           *hdr;
 
     /* Check if the attribute is present and print it */
-    if (info->attrs[SWITCHDEV_EVENT_KEEPALIVE]) {
-    	char *str = nla_data(info->attrs[SWITCHDEV_EVENT_KEEPALIVE]);
-    	printk("switchdev_keepalive message received: %s\n", str);
-    } else {
-    	printk("switchdev_keepalive empty message received\n");
-    }
+    //if (info->attrs[SWITCHDEV_EVENT_KEEPALIVE]) {
+    //	char *str = nla_data(info->attrs[SWITCHDEV_EVENT_KEEPALIVE]);
+    //	printk("switchdev_keepalive message received: %s\n", str);
+    //} else {
+    //	printk("switchdev_keepalive empty message received\n");
+    //}
 
     /* Allocate a new buffer for the reply */
 	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
@@ -220,7 +220,7 @@ static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *inf
 	genlmsg_end(msg, hdr);
 
 	ret = genlmsg_reply(msg, info);
-	printk("reply sent\n");
+	//printk("reply sent\n");
 
 out:
 	return ret;

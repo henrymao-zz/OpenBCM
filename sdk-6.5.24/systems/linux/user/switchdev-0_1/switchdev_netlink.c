@@ -19,6 +19,7 @@
 
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
+#include <fcntl.h>
 
 #include "switchdev_netlink.h"
 
@@ -39,7 +40,6 @@ static int message_handler(struct nl_msg *msg, void *arg)
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
 
-	printf("message received, start processing\n");
 	/* Parse the attributes */
 	err = nla_parse(tb, SWITCHDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
 			genlmsg_attrlen(genlhdr, 0), NULL);
@@ -47,14 +47,20 @@ static int message_handler(struct nl_msg *msg, void *arg)
 		prerr("unable to parse message: %s\n", strerror(-err));
 		return NL_SKIP;
 	}
-	/* Check that there's actually a payload */
-	if (!tb[SWITCHDEV_EVENT_KEEPALIVE]) {
-		prerr("msg attribute missing from message\n");
-		return NL_SKIP;
+
+	if (tb[SWITCHDEV_EVENT_KEEPALIVE]) {
+        //keep alive, do nothing
+        return NL_OK;
 	}
 
-	/* Print it! */
-	printf("message received: %s\n", nla_get_string(tb[SWITCHDEV_EVENT_KEEPALIVE]));
+    if (tb[SWITCHDEV_EVENT_START]) {
+        printf("start response received\n");
+        return NL_OK;
+    }
+
+    if (tb[SWITCHDEV_EVENT_NETDEV]) {
+       printf("netdev event received\n");
+    }
 
 	return NL_OK;
 }
@@ -81,7 +87,6 @@ static int send_keepalive_msg(struct nl_sock *sk, int fam)
 	if (err < 0) {
 		return -err;
 	}
-	printf("message sent\n");
 
 	/* Send the message. */
 	err = nl_send_auto(sk, msg);
@@ -108,7 +113,7 @@ static int send_start_msg(struct nl_sock *sk, int fam)
 		return -EMSGSIZE;
 	}
 
-	printf("message sent\n");
+	printf("START message sent\n");
 
 	/* Send the message. */
 	err = nl_send_auto(sk, msg);
@@ -143,6 +148,13 @@ static inline int set_cb(struct nl_sock *sk)
 	return nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM,
 				   message_handler, NULL);
 }
+
+static void set_nonblocking(int fd) 
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
 
 #define EPOLL_MAX_EVENTS 10
 int switchdev_netlink_main(void)
@@ -209,7 +221,7 @@ int switchdev_netlink_main(void)
 	
 	//TimerFD 
     timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
-    timerfd_settime(tfd, 0, &keepalive_value, NULL);
+    timerfd_settime(timer_fd, 0, &keepalive_value, NULL);
 
     ucsk_fd = nl_socket_get_fd(ucsk);
     set_nonblocking(ucsk_fd);
@@ -244,7 +256,7 @@ int switchdev_netlink_main(void)
             } else if (events[i].data.fd == mcsk_fd) {
                 nl_recvmsgs_default(mcsk);
 			} else if (events[i].data.fd == timer_fd) {
-                send_keepalive_msg(usck, fam);
+                send_keepalive_msg(ucsk, fam);
 			} else {
                prerr("unknown event %d\n", events[i].data.fd);
 			}
