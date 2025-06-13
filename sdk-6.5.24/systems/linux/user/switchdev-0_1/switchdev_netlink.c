@@ -30,11 +30,22 @@
  * Current libnl repo: https://github.com/thom311/libnl
  */
 
- static int handle_netdev_event(void *ptr)
+ static int handle_netdev_event(struct nl_msg *msg)
  {
-    struct switchdev_netdev_event *netdev_event = (struct switchdev_netdev_event *)ptr;
+	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
+	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
 
     printf("netdev event received %s event %d\n", netdev_event->name, netdev_event->event);
+	/* Parse the attributes */
+	err = nla_parse(tb, SWITCHDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
+			genlmsg_attrlen(genlhdr, 0), NULL);
+	if (err) {
+		prerr("unable to parse message: %s\n", strerror(-err));
+		return NL_SKIP;
+	}
+
+	printf("    interface name %s event %d\n", nla_data(tb[SWITCHDEV_A_NETDEV_IF_NAME]), nla_data(tb[SWITCHDEV_A_NETDEV_EVENT_ID]));
+
 	return 0;
  }
 
@@ -48,28 +59,20 @@ static int message_handler(struct nl_msg *msg, void *arg)
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
 	
-	/* Parse the attributes */
-	err = nla_parse(tb, SWITCHDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
-			genlmsg_attrlen(genlhdr, 0), NULL);
-	if (err) {
-		prerr("unable to parse message: %s\n", strerror(-err));
-		return NL_SKIP;
+	switch (genlhdr->cmd) {
+        case SWITCHDEV_EVENT_NETDEV:
+	       handle_netdev_event(msg);
+		   break;
+
+		case SWITCHDEV_EVENT_START:
+		   printf("start response received\n");
+		   break;
+
+		case SWITCHDEV_EVENT_KEEPALIVE:
+		default:
+		   break;
 	}
 
-	if (tb[SWITCHDEV_EVENT_KEEPALIVE]) {
-        //keep alive, do nothing
-        return NL_OK;
-	}
-
-    if (tb[SWITCHDEV_EVENT_START]) {
-        printf("start response received\n");
-        return NL_OK;
-    }
-
-    if (tb[SWITCHDEV_EVENT_NETDEV]) {
-       handle_netdev_event(tb[SWITCHDEV_EVENT_NETDEV]);
-	   return NL_OK;
-    }
 
 	return NL_OK;
 }

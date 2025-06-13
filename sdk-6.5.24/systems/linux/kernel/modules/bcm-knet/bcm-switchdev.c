@@ -38,34 +38,40 @@ struct switchdev_server_config server_conf;
 static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *info);
 static int handle_switchdev_start(struct sk_buff *skb, struct genl_info *info);
 
+/* SWITCHDEV_NETDEV_EVENT - do */
+static const struct nla_policy switchdev_netdev_event_nl_policy[NFSD_A_SERVER_SCOPE + 1] = {
+    [SWITCHDEV_A_NETDEV_EVENT_ID] = { .type = NLA_U32, },
+	[SWITCHDEV_A_NETDEV_EVENT_NAME] = { .type = NLA_NUL_STRING, },
+};
+
+static const struct nla_policy switchdev_nl_policy[SWITCHDEV_EVENT_MAX + 1] = {
+	[SWITCHDEV_EVENT_KEEPALIVE] = {
+        .type = NLA_NUL_STRING
+	},
+	[SWITCHDEV_A_START] = {
+        .len = 0,
+	},    
+};
+
+
 /* operation definition */
 static struct genl_ops switchdev_genl_ops[] = {
     {
         .cmd = SWITCHDEV_EVENT_KEEPALIVE,
         .doit = handle_switchdev_keepalive,
+        .policy = switchdev_nl_policy,
     },
     {
         .cmd = SWITCHDEV_EVENT_START,
         .doit = handle_switchdev_start,
+        .policy = switchdev_nl_policy,
     },    
+    {
+        .cmd = SWITCHDEV_EVENT_NETDEV,
+        .policy = switchdev_netdev_event_nl_policy,
+    },     
 };
 
-
-
-static const struct nla_policy switchdev_nl_policy[SWITCHDEV_EVENT_MAX + 1] = {
-	[SWITCHDEV_EVENT_UNSPEC] = {
-		.len = 0,
-	},
-	[SWITCHDEV_EVENT_KEEPALIVE] = {
-        .type = NLA_NUL_STRING
-	},
-	[SWITCHDEV_EVENT_START] = {
-        .len = 0,
-	},    
-	[SWITCHDEV_EVENT_NETDEV] = {
-        .len = sizeof(struct switchdev_netdev_event),
-	},
-};
 
 
 static struct genl_multicast_group switchdev_genl_mcgrp[] = {
@@ -88,7 +94,6 @@ static struct genl_family switchdev_genl_family = {
     .n_ops    = ARRAY_SIZE(switchdev_genl_ops),
     .mcgrps   = switchdev_genl_mcgrp,
     .n_mcgrps = ARRAY_SIZE(switchdev_genl_mcgrp),
-    .policy   = switchdev_nl_policy,
 };
 
 static void switchdev_ipc_update_last_active(void)
@@ -158,21 +163,47 @@ out:
 
 static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 {
-	struct switchdev_ipc_msg *msg;
-    struct switchdev_netdev_event *netdev_event;
-	int ret;
+	struct genlmsghdr *nlh;
+	struct sk_buff *skb;    
+	int    ret = -EINVAL;
 
-	msg = switchdev_ipc_msg_alloc(sizeof(struct switchdev_netdev_event));
-	if (!msg)
-		return -EINVAL;
+	if (!switchdev_u_pid) {
+        printk("switchdev_ipc_msg_send no userspace daemon connected\n");
+		return ret;
+    }
 
-	msg->type = SWITCHDEV_EVENT_NETDEV;
-    netdev_event = (struct switchdev_netdev_event *)msg->payload;
-    netdev_event->event = event;
-    strscpy(netdev_event->name, dev->name, sizeof(netdev_event->name));
+	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (!skb)
+		return -ENOMEM;
 
-	ret = switchdev_ipc_msg_send(msg);
-	switchdev_ipc_msg_free(msg);
+	nlh = genlmsg_put(skb, switchdev_u_pid, 0, &switchdev_genl_family, 0, SWITCHDEV_EVENT_NETDEV);
+	if (!nlh)
+		goto err_cancel_msg;
+
+	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_EVENT_ID, event);
+	if (ret) {
+		goto out;
+	}
+
+    ret = nla_put_string(skb, SWITCHDEV_A_NETDEV_IF_NAME, netdev_event->name);
+	if (ret) {
+		goto out;
+	}
+
+	genlmsg_end(skb, nlh);
+	ret = genlmsg_unicast(switchdev_net, skb, switchdev_u_pid);
+	if (!ret) {
+        printk("switchdev_netdev_event_send success\n");
+		//switchdev_ipc_update_last_active();
+    } else {
+        printk("switchdev_netdev_event_send failed %d\n", ret);
+    }
+	return ret;
+
+err_cancel_msg:
+    genlmsg_cancel(skb, nlh);
+out:
+	nlmsg_free(skb);
 	return ret;
 }
 

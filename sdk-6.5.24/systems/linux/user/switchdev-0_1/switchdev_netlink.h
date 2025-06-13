@@ -10,22 +10,34 @@
 #define SWITCHDEV_GENL_VERSION 1
 #define SWITCHDEV_MC_GRP_NAME "SWITCHDEV_GRP"
 
+
 /* commands  
- * also used as NETLINK attribute type value                                                                                
  */
 enum {
-    SWITCHDEV_EVENT_UNSPEC = 0,                                                                                             
     SWITCHDEV_EVENT_KEEPALIVE,
     SWITCHDEV_EVENT_START,
-    SWITCHDEV_EVENT_NETDEV,                                                                                                 
-    
-    __SWITCHDEV_EVENT_MAX,
-    SWITCHDEV_EVENT_MAX = __SWITCHDEV_EVENT_MAX - 1                                                                         
-};                                                                                                                          
+    SWITCHDEV_EVENT_NETDEV,
 
-struct switchdev_netdev_event {
-	uint8_t  name[16];
-	uint32_t event;
+    __SWITCHDEV_EVENT_MAX,
+    SWITCHDEV_EVENT_MAX = __SWITCHDEV_EVENT_MAX - 1
+};
+
+
+
+enum {
+	SWITCHDEV_A_NETDEV_EVENT_ID = 1,
+	SWITCHDEV_A_NETDEV_IF_NAME,
+	
+	__SWITCHDEV_A_NETDEV_EVENT_MAX,
+	SWITCHDEV_A_NETDEV_EVENT_MAX = (__SWITCHDEV_A_NETDEV_EVENT_MAX - 1)
+};
+
+enum {
+	SWITCHDEV_A_KEEPALIVE = 1,
+	SWITCHDEV_A_START,
+
+	__SWITCHDEV_A_MAX,
+	SWITCHDEV_A_MAX = (__SWITCHDEV_A_MAX - 1)
 };
 
 
