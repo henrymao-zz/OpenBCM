@@ -30,12 +30,13 @@
  * Current libnl repo: https://github.com/thom311/libnl
  */
 
- static int handle_netdev_event(struct nl_msg *msg)
- {
+static int handle_netdev_event(struct nl_msg *msg)
+{
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
+    int err = 0;
 
-    printf("netdev event received %s event %d\n", netdev_event->name, netdev_event->event);
+    printf("netdev event received:\n");
 	/* Parse the attributes */
 	err = nla_parse(tb, SWITCHDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
 			genlmsg_attrlen(genlhdr, 0), NULL);
@@ -44,10 +45,12 @@
 		return NL_SKIP;
 	}
 
-	printf("    interface name %s event %d\n", nla_data(tb[SWITCHDEV_A_NETDEV_IF_NAME]), nla_data(tb[SWITCHDEV_A_NETDEV_EVENT_ID]));
+	printf("    interface name %s event %d\n", 
+            nla_get_string(tb[SWITCHDEV_A_NETDEV_IF_NAME]),
+            nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID]));
 
 	return 0;
- }
+}
 
 /*
  * Handler for all received messages from our Generic Netlink family, both
@@ -57,11 +60,10 @@ static int message_handler(struct nl_msg *msg, void *arg)
 {
 	int		   err	   = 0;
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
-	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
 	
 	switch (genlhdr->cmd) {
         case SWITCHDEV_EVENT_NETDEV:
-	       handle_netdev_event(msg);
+	       err = handle_netdev_event(msg);
 		   break;
 
 		case SWITCHDEV_EVENT_START:
@@ -74,7 +76,7 @@ static int message_handler(struct nl_msg *msg, void *arg)
 	}
 
 
-	return NL_OK;
+	return err;
 }
 
 /* Send (unicast) SWITCHDEV_EVENT_KEEPALIVE request message */

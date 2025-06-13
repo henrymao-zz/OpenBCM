@@ -39,9 +39,9 @@ static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *inf
 static int handle_switchdev_start(struct sk_buff *skb, struct genl_info *info);
 
 /* SWITCHDEV_NETDEV_EVENT - do */
-static const struct nla_policy switchdev_netdev_event_nl_policy[NFSD_A_SERVER_SCOPE + 1] = {
+static const struct nla_policy switchdev_netdev_event_nl_policy[SWITCHDEV_A_NETDEV_EVENT_MAX + 1] = {
     [SWITCHDEV_A_NETDEV_EVENT_ID] = { .type = NLA_U32, },
-	[SWITCHDEV_A_NETDEV_EVENT_NAME] = { .type = NLA_NUL_STRING, },
+	[SWITCHDEV_A_NETDEV_IF_NAME] = { .type = NLA_NUL_STRING, },
 };
 
 static const struct nla_policy switchdev_nl_policy[SWITCHDEV_EVENT_MAX + 1] = {
@@ -66,10 +66,6 @@ static struct genl_ops switchdev_genl_ops[] = {
         .doit = handle_switchdev_start,
         .policy = switchdev_nl_policy,
     },    
-    {
-        .cmd = SWITCHDEV_EVENT_NETDEV,
-        .policy = switchdev_netdev_event_nl_policy,
-    },     
 };
 
 
@@ -168,7 +164,7 @@ static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 	int    ret = -EINVAL;
 
 	if (!switchdev_u_pid) {
-        printk("switchdev_ipc_msg_send no userspace daemon connected\n");
+        printk("switchdev_netdev_event_send no userspace daemon connected\n");
 		return ret;
     }
 
@@ -185,7 +181,7 @@ static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 		goto out;
 	}
 
-    ret = nla_put_string(skb, SWITCHDEV_A_NETDEV_IF_NAME, netdev_event->name);
+    ret = nla_put_string(skb, SWITCHDEV_A_NETDEV_IF_NAME, dev->name);
 	if (ret) {
 		goto out;
 	}
@@ -210,7 +206,7 @@ out:
 static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *info)
 {
     /* message handling code goes here; return 0 on success, negative values on failure */
-    char *str;
+    //char *str;
     int   ret;
     struct sk_buff *msg;
     void           *hdr;
@@ -262,7 +258,7 @@ out:
 static int handle_switchdev_start(struct sk_buff *skb, struct genl_info *info)
 {
     /* message handling code goes here; return 0 on success, negative values on failure */
-    char *str;
+    //char *str;
     int   ret;
     struct sk_buff *msg;
     void           *hdr;
@@ -295,7 +291,6 @@ static int handle_switchdev_start(struct sk_buff *skb, struct genl_info *info)
 	ret = genlmsg_reply(msg, info);
 	printk("start reply sent\n");
 
-out:
 	return ret;
 }
 
@@ -465,7 +460,7 @@ int switchdev_port_obj_add_netlink(struct net_device *dev, const void *ctx,
 	}
 
     
-    return 0;
+    return err;
 }
 int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
                  const struct switchdev_obj *obj)
@@ -493,7 +488,7 @@ int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
 	}
 
     
-    return 0;
+    return err;
 }
 
 int switchdev_port_obj_attr_set_netlink(struct net_device *dev, const void *ctx,
@@ -537,7 +532,7 @@ int switchdev_port_obj_attr_set_netlink(struct net_device *dev, const void *ctx,
 	default:
 		err = -EOPNOTSUPP;
 	}    
-    return 0;
+    return err;
 }
 
 
