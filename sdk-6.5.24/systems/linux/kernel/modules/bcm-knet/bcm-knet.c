@@ -8407,6 +8407,14 @@ bkn_knet_reprobe(kcom_msg_reprobe_t *kmsg, int len)
     return sizeof(kcom_msg_reprobe_t);
 }
 
+int bcm_knet_get_port(struct net_device *dev)
+{
+    bkn_priv_t *priv = netdev_priv(dev);
+
+    return priv->port;
+}
+
+
 static int
 bkn_knet_netif_create(kcom_msg_netif_create_t *kmsg, int len)
 {

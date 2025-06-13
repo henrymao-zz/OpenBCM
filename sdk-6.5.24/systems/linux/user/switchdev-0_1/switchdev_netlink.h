@@ -27,6 +27,7 @@ enum {
 enum {
 	SWITCHDEV_A_NETDEV_EVENT_ID = 1,
 	SWITCHDEV_A_NETDEV_IF_NAME,
+    SWITCHDEV_A_NETDEV_PORT,
 	
 	__SWITCHDEV_A_NETDEV_EVENT_MAX,
 	SWITCHDEV_A_NETDEV_EVENT_MAX = (__SWITCHDEV_A_NETDEV_EVENT_MAX - 1)
@@ -41,5 +42,54 @@ enum {
 };
 
 
+/* netdevice notifier chain. Please remember to update netdev_cmd_to_name()
+ * and the rtnetlink notification exclusion list in rtnetlink_event() when
+ * adding new types.
+ */
+enum netdev_cmd {
+	NETDEV_UP	= 1,	/* For now you can't veto a device up/down */
+	NETDEV_DOWN,
+	NETDEV_REBOOT,		/* Tell a protocol stack a network interface
+				   detected a hardware crash and restarted
+				   - we can use this eg to kick tcp sessions
+				   once done */
+	NETDEV_CHANGE,		/* Notify device state change */
+	NETDEV_REGISTER,
+	NETDEV_UNREGISTER,
+	NETDEV_CHANGEMTU,	/* notify after mtu change happened */
+	NETDEV_CHANGEADDR,	/* notify after the address change */
+	NETDEV_PRE_CHANGEADDR,	/* notify before the address change */
+	NETDEV_GOING_DOWN,
+	NETDEV_CHANGENAME,
+	NETDEV_FEAT_CHANGE,
+	NETDEV_BONDING_FAILOVER,
+	NETDEV_PRE_UP,
+	NETDEV_PRE_TYPE_CHANGE,
+	NETDEV_POST_TYPE_CHANGE,
+	NETDEV_POST_INIT,
+	NETDEV_PRE_UNINIT,
+	NETDEV_RELEASE,
+	NETDEV_NOTIFY_PEERS,
+	NETDEV_JOIN,
+	NETDEV_CHANGEUPPER,
+	NETDEV_RESEND_IGMP,
+	NETDEV_PRECHANGEMTU,	/* notify before mtu change happened */
+	NETDEV_CHANGEINFODATA,
+	NETDEV_BONDING_INFO,
+	NETDEV_PRECHANGEUPPER,
+	NETDEV_CHANGELOWERSTATE,
+	NETDEV_UDP_TUNNEL_PUSH_INFO,
+	NETDEV_UDP_TUNNEL_DROP_INFO,
+	NETDEV_CHANGE_TX_QUEUE_LEN,
+	NETDEV_CVLAN_FILTER_PUSH_INFO,
+	NETDEV_CVLAN_FILTER_DROP_INFO,
+	NETDEV_SVLAN_FILTER_PUSH_INFO,
+	NETDEV_SVLAN_FILTER_DROP_INFO,
+	NETDEV_OFFLOAD_XSTATS_ENABLE,
+	NETDEV_OFFLOAD_XSTATS_DISABLE,
+	NETDEV_OFFLOAD_XSTATS_REPORT_USED,
+	NETDEV_OFFLOAD_XSTATS_REPORT_DELTA,
+	NETDEV_XDP_FEAT_CHANGE,
+};
 
 #endif 

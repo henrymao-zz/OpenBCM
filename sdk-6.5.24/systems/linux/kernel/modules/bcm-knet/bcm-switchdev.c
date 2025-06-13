@@ -157,16 +157,26 @@ out:
 	return ret;
 }
 
+extern int bcm_knet_get_port(struct net_device *dev);
+
 static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 {
 	struct genlmsghdr *nlh;
 	struct sk_buff *skb;    
 	int    ret = -EINVAL;
+    int    port;
 
 	if (!switchdev_u_pid) {
         printk("switchdev_netdev_event_send no userspace daemon connected\n");
 		return ret;
     }
+
+    port = bcm_knet_get_port(dev);
+
+    if (port < 0 ) {
+       printk("switchdev_netdev_event_send invalid port %s %d", dev->name, port);
+       return ret;
+    } 
 
 	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (!skb)
@@ -177,6 +187,11 @@ static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
 		goto err_cancel_msg;
 
 	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_EVENT_ID, event);
+	if (ret) {
+		goto out;
+	}
+
+	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_PORT, port);
 	if (ret) {
 		goto out;
 	}

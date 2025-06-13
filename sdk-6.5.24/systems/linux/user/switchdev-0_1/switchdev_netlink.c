@@ -69,6 +69,7 @@ static int handle_netdev_event(struct nl_msg *msg)
     int   err = 0;
 	int   event;
 	char *ifname;
+	int   port;
 
     printf("netdev event received:\n");
 	/* Parse the attributes */
@@ -79,18 +80,17 @@ static int handle_netdev_event(struct nl_msg *msg)
 		return NL_SKIP;
 	}
 
-	event = nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID];
+	event = nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID]);
     ifname = nla_get_string(tb[SWITCHDEV_A_NETDEV_IF_NAME]);
-	printf("    interface name %s event %d\n", ifname, event);
-
-	//get bcm_port_t from interface name
+	port = nla_get_u32(tb[SWITCHDEV_A_NETDEV_PORT]);
+	printf("    interface name %s event %d port %d\n", ifname, event, port);
 
 	switch (event) {
        case NETDEV_PRE_UP:
-          //err = bcm_port_enable_set(0, , TRUE);
+          //err = bcm_port_enable_set(0, port, TRUE);
 		  break;
 	   case NETDEV_DOWN:
-          //err = bcm_port_enable_set(0, , FALSE);
+          //err = bcm_port_enable_set(0, port, FALSE);
 		  break;
 	   case NETDEV_CHANGEUPPER:
           break;
