@@ -20,6 +20,38 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <fcntl.h>
+#include <linux/netdevice.h>
+
+#ifndef NO_SAL_APPL
+#include <sal/appl/sal.h>
+#include <sal/appl/config.h>
+#include <appl/diag/bslmgmt.h>
+#include <appl/diag/opennsa_diag.h>
+#endif
+
+#include <bcm/init.h>
+#include <bcm/error.h>
+#include <soc/cmext.h>
+#include <soc/opensoc.h>
+#include <sal/core/boot.h>
+#include <linux-bde.h>
+
+#ifdef BCM_WARM_BOOT_SUPPORT
+#include <bcm/switch.h>
+#endif
+
+/*
+ * These includes are needed for do_per_switch_setup() part of the demo.
+ */
+#include <bcm/port.h>
+#include <bcm/stg.h>
+
+#if defined(BCM_LTSW_SUPPORT)
+#include <appl/diag/sysconf_ltsw.h>
+#endif
+
+#include <opennsa/link.h>
+
 
 #include "switchdev_netlink.h"
 
@@ -34,7 +66,9 @@ static int handle_netdev_event(struct nl_msg *msg)
 {
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
-    int err = 0;
+    int   err = 0;
+	int   event;
+	char *ifname;
 
     printf("netdev event received:\n");
 	/* Parse the attributes */
@@ -45,11 +79,26 @@ static int handle_netdev_event(struct nl_msg *msg)
 		return NL_SKIP;
 	}
 
-	printf("    interface name %s event %d\n", 
-            nla_get_string(tb[SWITCHDEV_A_NETDEV_IF_NAME]),
-            nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID]));
+	event = nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID];
+    ifname = nla_get_string(tb[SWITCHDEV_A_NETDEV_IF_NAME]);
+	printf("    interface name %s event %d\n", ifname, event);
 
-	return 0;
+	//get bcm_port_t from interface name
+
+	switch (event) {
+       case NETDEV_PRE_UP:
+          //err = bcm_port_enable_set(0, , TRUE);
+		  break;
+	   case NETDEV_DOWN:
+          //err = bcm_port_enable_set(0, , FALSE);
+		  break;
+	   case NETDEV_CHANGEUPPER:
+          break;
+	   default:
+	       break;
+
+	}
+	return err;
 }
 
 /*
