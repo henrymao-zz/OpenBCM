@@ -65,7 +65,7 @@
 static int handle_netdev_event(struct nl_msg *msg)
 {
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
-	struct nlattr	  *tb[SWITCHDEV_EVENT_MAX + 1];
+	struct nlattr	  *tb[SWITCHDEV_A_NETDEV_EVENT_MAX + 1];
     int   err = 0;
 	int   event;
 	char *ifname;
@@ -73,7 +73,7 @@ static int handle_netdev_event(struct nl_msg *msg)
 
     printf("netdev event received:\n");
 	/* Parse the attributes */
-	err = nla_parse(tb, SWITCHDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
+	err = nla_parse(tb, SWITCHDEV_A_NETDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
 			genlmsg_attrlen(genlhdr, 0), NULL);
 	if (err) {
 		prerr("unable to parse message: %s\n", strerror(-err));
@@ -81,16 +81,17 @@ static int handle_netdev_event(struct nl_msg *msg)
 	}
 
 	event = nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID]);
+    port = nla_get_u32(tb[SWITCHDEV_A_NETDEV_PORT]);
     ifname = nla_get_string(tb[SWITCHDEV_A_NETDEV_IF_NAME]);
-	port = nla_get_u32(tb[SWITCHDEV_A_NETDEV_PORT]);
+
 	printf("    interface name %s event %d port %d\n", ifname, event, port);
 
 	switch (event) {
        case NETDEV_PRE_UP:
-          //err = bcm_port_enable_set(0, port, TRUE);
+          err = bcm_port_enable_set(0, port, TRUE);
 		  break;
 	   case NETDEV_DOWN:
-          //err = bcm_port_enable_set(0, port, FALSE);
+          err = bcm_port_enable_set(0, port, FALSE);
 		  break;
 	   case NETDEV_CHANGEUPPER:
           break;

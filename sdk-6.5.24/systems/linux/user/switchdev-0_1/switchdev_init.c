@@ -474,8 +474,6 @@ _sysconf_attach( int unit )
 
 
 //load port_config.ini and create interfaces
-static int port_config_init[128];
-
 int knet_portconfig_init(int unit)
 {
     bcm_knet_netif_t netif;
@@ -484,8 +482,6 @@ int knet_portconfig_init(int unit)
     char line[256];
     char *token;
     int rv;
-    int  index;
-    char prefix[16];
 
     /* open file, allocate buffer and read file into buffer */
     fp = sal_fopen("port_config.ini", "rb");
@@ -494,8 +490,6 @@ int knet_portconfig_init(int unit)
        printf("port_config.ini open failed \n");
        return 0;
     }
-
-    memset(port_config_init, -1, sizeof(port_config_init));
 
     while (fgets(line, sizeof(line), fp)) {
         //printf("%s", line);         //Name
@@ -541,11 +535,6 @@ int knet_portconfig_init(int unit)
         if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
             printf("Error creating packet filter: %d\n", rv);
         }    
-
-        //save interface to map
-        sscanf(netif.name, "%s%d",prefix, index);
-        printf("  saving to map prefix %s %d\n", prefix, index);
-        port_config_init[index] = netif.port;
     }
 
     fclose(fp);
