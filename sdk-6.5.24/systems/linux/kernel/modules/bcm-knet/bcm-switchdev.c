@@ -538,29 +538,10 @@ int switchdev_port_obj_add_netlink(struct net_device *dev, const void *ctx,
                  const struct switchdev_obj *obj,
                  struct netlink_ext_ack *extack)
 {
+    int err; 
+
     err = switchdev_port_event_send(SWITCHDEV_PORT_OBJ_ADD, dev, ctx, obj, extack);
 
-#if 0
-	switch (obj->id) {
-	case SWITCHDEV_OBJ_ID_PORT_VLAN:
-		vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
-        printk("    dev %s vlan = %d\n",dev->name, vlan->vid);
-        err = switchdev_handle_port_vlan_add(dev, vlan);
-        break;
-		//return prestera_port_vlans_add(port, vlan, extack);
-	case SWITCHDEV_OBJ_ID_PORT_MDB:
-		mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
-        printk("   vlan = %d\n",mdb->vid);
-		//err = prestera_mdb_port_addr_obj_add(mdb);
-		break;
-	case SWITCHDEV_OBJ_ID_HOST_MDB:
-		fallthrough;
-	default:
-		err = -EOPNOTSUPP;
-		break;
-	}
-
-#endif    
     return err;
 }
 int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
