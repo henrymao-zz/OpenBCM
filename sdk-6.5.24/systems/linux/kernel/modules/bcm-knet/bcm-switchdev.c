@@ -446,20 +446,106 @@ out_bad:
 }
 
 
+static int switchdev_port_event_send(unsigned long event,
+                                     struct net_device *dev, const void *ctx,
+                                     const struct switchdev_obj *obj,
+                                     struct netlink_ext_ack *extack)
+{
+	const struct switchdev_obj_port_vlan *vlan;
+	const struct switchdev_obj_port_mdb *mdb;
+	int err = 0;    
+	struct genlmsghdr *nlh;
+	struct sk_buff *skb;    
+	int    ret = -EINVAL;
+    int    port;
+
+	if (!switchdev_u_pid) {
+        printk("switchdev_netdev_event_send no userspace daemon connected\n");
+		return ret;
+    }
+
+    port = bcm_knet_get_port(dev);
+
+    if (port < 0 ) {
+       printk("switchdev_netdev_event_send invalid port %s %d", dev->name, port);
+       return ret;
+    } 
+
+	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (!skb)
+		return -ENOMEM;
+
+	nlh = genlmsg_put(skb, switchdev_u_pid, 0, &switchdev_genl_family, 0, SWITCHDEV_EVENT_PORT);
+	if (!nlh)
+		goto err_cancel_msg;
+
+	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_EVENT_ID, event);
+	if (ret) {
+		goto out;
+	}
+
+	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_PORT, port);
+	if (ret) {
+		goto out;
+	}
+
+    ret = nla_put_string(skb, SWITCHDEV_A_NETDEV_IF_NAME, dev->name);
+	if (ret) {
+		goto out;
+	}
+
+	switch (obj->id) {
+	    case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		    vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
+            printk("    dev %s vlan = %d\n",dev->name, vlan->vid);
+            ret = nla_put_u32(skb, SWITCHDEV_A_PORT_VLAN_ID, vlan->vid);
+            break;
+	    case SWITCHDEV_OBJ_ID_PORT_MDB:
+		    mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
+            printk("   vlan = %d\n",mdb->vid);
+		    break;
+	    case SWITCHDEV_OBJ_ID_HOST_MDB:
+		    fallthrough;
+	    default:
+		    err = -EOPNOTSUPP;
+		    break;
+	}
+    
+	if (ret) {
+		goto out;
+	}
+
+    
+	genlmsg_end(skb, nlh);
+	ret = genlmsg_unicast(switchdev_net, skb, switchdev_u_pid);
+	if (!ret) {
+        printk("switchdev_netdev_event_send success\n");
+		//switchdev_ipc_update_last_active();
+    } else {
+        printk("switchdev_netdev_event_send failed %d\n", ret);
+    }
+	return ret;
+
+err_cancel_msg:
+    genlmsg_cancel(skb, nlh);
+out:
+	nlmsg_free(skb);
+	return ret;
+}
+
+
 int switchdev_port_obj_add_netlink(struct net_device *dev, const void *ctx,
                  const struct switchdev_obj *obj,
                  struct netlink_ext_ack *extack)
 {
-	const struct switchdev_obj_port_vlan *vlan;
-	const struct switchdev_obj_port_mdb *mdb;
-	int err = 0;
+    err = switchdev_port_event_send(SWITCHDEV_PORT_OBJ_ADD, dev, ctx, obj, extack);
 
-    printk("switchdev_port_obj_add_netlink id = %d \n", obj->id);
-
+#if 0
 	switch (obj->id) {
 	case SWITCHDEV_OBJ_ID_PORT_VLAN:
 		vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
-        printk("   vlan = %d\n",vlan->vid);
+        printk("    dev %s vlan = %d\n",dev->name, vlan->vid);
+        err = switchdev_handle_port_vlan_add(dev, vlan);
         break;
 		//return prestera_port_vlans_add(port, vlan, extack);
 	case SWITCHDEV_OBJ_ID_PORT_MDB:
@@ -474,7 +560,7 @@ int switchdev_port_obj_add_netlink(struct net_device *dev, const void *ctx,
 		break;
 	}
 
-    
+#endif    
     return err;
 }
 int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
