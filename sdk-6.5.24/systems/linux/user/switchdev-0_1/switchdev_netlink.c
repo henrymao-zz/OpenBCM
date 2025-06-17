@@ -102,7 +102,7 @@ static int handle_netdev_event(struct nl_msg *msg)
 	return err;
 }
 
-static int handle_switchdev_port_obj_add(struct nlattr *tb)
+static int handle_switchdev_port_obj_add(struct nlattr *tb[])
 {
 	char *ifname;
 	int   port;
@@ -111,14 +111,14 @@ static int handle_switchdev_port_obj_add(struct nlattr *tb)
 	int   obj_id;
 	int   err = 0;
 
-	event = nla_get_u32(tb[SWITCHDEV_A_PORT_EVENT_ID]);
     port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
 	flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
     ifname = nla_get_string(tb[SWITCHDEV_A_PORT_IF_NAME]);
 	vlan = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_ID]);
 	obj_id = nla_get_u32(tb[SWITCHDEV_A_PORT_OBJ_ID]);
 
-	printf("handle_switchdev_port_obj_add interface name %s event %d port %d vlan %d\n", ifname, event, port, vlan);
+	printf("handle_switchdev_port_obj_add name %s port %d vlan %d obj_id %d flag 0x%x\n", 
+            ifname, port, vlan, obj_id, flag);
 
 	return err;
 
@@ -128,14 +128,14 @@ static int handle_switchdev_port_obj_add(struct nlattr *tb)
 static int handle_switchdev_port_event(struct nl_msg *msg)
 {
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
-	struct nlattr	  *tb[SWITCHDEV_A_PORT_EVENT_MAX + 1];
+	struct nlattr	  *tb[SWITCHDEV_A_PORT_MAX + 1];
     int   err = 0;
 	int   event;
 
 
     printf("switchdev port event received:\n");
 	/* Parse the attributes */
-	err = nla_parse(tb, SWITCHDEV_A_PORT_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
+	err = nla_parse(tb, SWITCHDEV_A_PORT_MAX, genlmsg_attrdata(genlhdr, 0),
 			genlmsg_attrlen(genlhdr, 0), NULL);
 	if (err) {
 		prerr("unable to parse message: %s\n", strerror(-err));

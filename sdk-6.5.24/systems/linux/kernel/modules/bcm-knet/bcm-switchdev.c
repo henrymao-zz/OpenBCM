@@ -464,7 +464,7 @@ static int switchdev_port_event_send(unsigned long event,
 		return ret;
     }
 
-    if (!netif_is_bridge_master(dev)) {}
+    if (!netif_is_bridge_master(dev)) {
         port = bcm_knet_get_port(dev);
 
         if (port < 0 ) {
@@ -501,7 +501,7 @@ static int switchdev_port_event_send(unsigned long event,
 		goto out;
 	}
 
-    ret = nla_put_string(skb, SWITCHDEV_A_PORT_OBJ_ID, obj->id);
+    ret = nla_put_u32(skb, SWITCHDEV_A_PORT_OBJ_ID, obj->id);
 	if (ret) {
 		goto out;
 	}    

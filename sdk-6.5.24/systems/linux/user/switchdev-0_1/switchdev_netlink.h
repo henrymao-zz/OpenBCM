@@ -54,6 +54,8 @@ enum {
 	SWITCHDEV_A_PORT_MAX = (__SWITCHDEV_A_PORT_MAX - 1)
 };
 
+
+//from include/linux/netdevice.h
 /* netdevice notifier chain. Please remember to update netdev_cmd_to_name()
  * and the rtnetlink notification exclusion list in rtnetlink_event() when
  * adding new types.
@@ -102,6 +104,31 @@ enum netdev_cmd {
 	NETDEV_OFFLOAD_XSTATS_REPORT_USED,
 	NETDEV_OFFLOAD_XSTATS_REPORT_DELTA,
 	NETDEV_XDP_FEAT_CHANGE,
+};
+
+
+// from include/net/switchdev.h
+enum switchdev_notifier_type {
+	SWITCHDEV_FDB_ADD_TO_BRIDGE = 1,
+	SWITCHDEV_FDB_DEL_TO_BRIDGE,
+	SWITCHDEV_FDB_ADD_TO_DEVICE,
+	SWITCHDEV_FDB_DEL_TO_DEVICE,
+	SWITCHDEV_FDB_OFFLOADED,
+	SWITCHDEV_FDB_FLUSH_TO_BRIDGE,
+
+	SWITCHDEV_PORT_OBJ_ADD, /* Blocking. */
+	SWITCHDEV_PORT_OBJ_DEL, /* Blocking. */
+	SWITCHDEV_PORT_ATTR_SET, /* May be blocking . */
+
+	SWITCHDEV_VXLAN_FDB_ADD_TO_BRIDGE,
+	SWITCHDEV_VXLAN_FDB_DEL_TO_BRIDGE,
+	SWITCHDEV_VXLAN_FDB_ADD_TO_DEVICE,
+	SWITCHDEV_VXLAN_FDB_DEL_TO_DEVICE,
+	SWITCHDEV_VXLAN_FDB_OFFLOADED,
+
+	SWITCHDEV_BRPORT_OFFLOADED,
+	SWITCHDEV_BRPORT_UNOFFLOADED,
+	SWITCHDEV_BRPORT_REPLAY,
 };
 
 #endif 
