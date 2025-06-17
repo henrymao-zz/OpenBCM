@@ -457,18 +457,20 @@ static int switchdev_port_event_send(unsigned long event,
 	struct genlmsghdr *nlh;
 	struct sk_buff *skb;    
 	int    ret = -EINVAL;
-    int    port;
+    int    port = 0;
 
 	if (!switchdev_u_pid) {
         printk("switchdev_netdev_event_send no userspace daemon connected\n");
 		return ret;
     }
 
-    port = bcm_knet_get_port(dev);
+    if (!netif_is_bridge_master(dev)) {}
+        port = bcm_knet_get_port(dev);
 
-    if (port < 0 ) {
-       printk("switchdev_netdev_event_send invalid port %s %d", dev->name, port);
-       return ret;
+        if (port < 0 ) {
+            printk("switchdev_netdev_event_send invalid port %s %d", dev->name, port);
+            return ret;
+        }
     } 
 
 	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
@@ -479,21 +481,31 @@ static int switchdev_port_event_send(unsigned long event,
 	if (!nlh)
 		goto err_cancel_msg;
 
-	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_EVENT_ID, event);
+	ret = nla_put_u32(skb, SWITCHDEV_A_PORT_EVENT_ID, event);
 	if (ret) {
 		goto out;
 	}
 
-	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_PORT, port);
+	ret = nla_put_u32(skb, SWITCHDEV_A_PORT_IF_FLAG, dev->priv_flags);
 	if (ret) {
 		goto out;
 	}
 
-    ret = nla_put_string(skb, SWITCHDEV_A_NETDEV_IF_NAME, dev->name);
+	ret = nla_put_u32(skb, SWITCHDEV_A_PORT_IF_PORT, port);
 	if (ret) {
 		goto out;
 	}
 
+    ret = nla_put_string(skb, SWITCHDEV_A_PORT_IF_NAME, dev->name);
+	if (ret) {
+		goto out;
+	}
+
+    ret = nla_put_string(skb, SWITCHDEV_A_PORT_OBJ_ID, obj->id);
+	if (ret) {
+		goto out;
+	}    
+    
 	switch (obj->id) {
 	    case SWITCHDEV_OBJ_ID_PORT_VLAN:
 		    vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);

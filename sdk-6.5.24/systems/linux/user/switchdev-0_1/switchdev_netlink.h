@@ -17,11 +17,11 @@ enum {
     SWITCHDEV_EVENT_KEEPALIVE,
     SWITCHDEV_EVENT_START,
     SWITCHDEV_EVENT_NETDEV,
+	SWITCHDEV_EVENT_PORT,
 
     __SWITCHDEV_EVENT_MAX,
     SWITCHDEV_EVENT_MAX = __SWITCHDEV_EVENT_MAX - 1
 };
-
 
 
 enum {
@@ -41,6 +41,18 @@ enum {
 	SWITCHDEV_A_MAX = (__SWITCHDEV_A_MAX - 1)
 };
 
+
+enum {
+	SWITCHDEV_A_PORT_EVENT_ID = 1,
+	SWITCHDEV_A_PORT_IF_FLAG,
+	SWITCHDEV_A_PORT_IF_PORT,
+	SWITCHDEV_A_PORT_IF_NAME,
+    SWITCHDEV_A_PORT_OBJ_ID,
+	SWITCHDEV_A_PORT_VLAN_ID,
+	
+	__SWITCHDEV_A_PORT_MAX,
+	SWITCHDEV_A_PORT_MAX = (__SWITCHDEV_A_PORT_MAX - 1)
+};
 
 /* netdevice notifier chain. Please remember to update netdev_cmd_to_name()
  * and the rtnetlink notification exclusion list in rtnetlink_event() when
