@@ -505,12 +505,16 @@ static int switchdev_port_event_send(unsigned long event,
 	if (ret) {
 		goto out;
 	}    
-    
+
 	switch (obj->id) {
 	    case SWITCHDEV_OBJ_ID_PORT_VLAN:
 		    vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
-            printk("    dev %s vlan = %d\n",dev->name, vlan->vid);
+            printk("    dev %s vlan = %d flags 0x%x\n",dev->name, vlan->vid, vlan->flags);
             ret = nla_put_u32(skb, SWITCHDEV_A_PORT_VLAN_ID, vlan->vid);
+	        if (ret) {
+		        goto out;
+	        }
+            ret = nla_put_u32(skb, SWITCHDEV_A_PORT_VLAN_FLAGS, vlan->flags);
             break;
 	    case SWITCHDEV_OBJ_ID_PORT_MDB:
 		    mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
@@ -556,32 +560,14 @@ int switchdev_port_obj_add_netlink(struct net_device *dev, const void *ctx,
 
     return err;
 }
+
 int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
                  const struct switchdev_obj *obj)
 {
-	const struct switchdev_obj_port_mdb *mdb;
-    const struct switchdev_obj_port_vlan *vlan;
-	int err = 0;
+    int err; 
 
-    printk("switchdev_port_obj_del_netlink id = %d\n", obj->id);
+    err = switchdev_port_event_send(SWITCHDEV_PORT_OBJ_DELL, dev, ctx, obj, NULL);
 
-	switch (obj->id) {
-	case SWITCHDEV_OBJ_ID_PORT_VLAN:
-        vlan = SWITCHDEV_OBJ_PORT_VLAN(obj);
-        printk("   vlan = %d\n",vlan->vid);
-        break;
-		//return prestera_port_vlans_del(port, SWITCHDEV_OBJ_PORT_VLAN(obj));
-	case SWITCHDEV_OBJ_ID_PORT_MDB:
-		mdb = SWITCHDEV_OBJ_PORT_MDB(obj);
-        printk("   vlan = %d\n",mdb->vid);
-		//err = prestera_mdb_port_addr_obj_del(port, mdb);
-		break;
-	default:
-		err = -EOPNOTSUPP;
-		break;
-	}
-
-    
     return err;
 }
 

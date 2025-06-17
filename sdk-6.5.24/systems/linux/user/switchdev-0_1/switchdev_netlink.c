@@ -21,6 +21,7 @@
 #include <sys/timerfd.h>
 #include <fcntl.h>
 #include <linux/netdevice.h>
+#include <linux/if_bridge.h>
 
 #ifndef NO_SAL_APPL
 #include <sal/appl/sal.h>
@@ -102,26 +103,123 @@ static int handle_netdev_event(struct nl_msg *msg)
 	return err;
 }
 
-static int handle_switchdev_port_obj_add(struct nlattr *tb[])
+static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 {
 	char *ifname;
-	int   port;
-	int   flag;
-	int   vlan;
+	int   port, if_flag;
+	int   vlan, vlan_flags;
+	int   err = 0;
+	bool  untagged;
+    bcm_pbmp_t pbmp, ubmp, ing_pbmp;
+
+    port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
+	if_flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
+    ifname = nla_get_string(tb[SWITCHDEV_A_PORT_IF_NAME]);
+	vlan = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_ID]);
+	vlan_flags = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_FLAGS]);
+	
+
+
+	printf("switchdev_port_vlan_add name %s port %d vlan %d obj_id %d flag 0x%x vlan_flags 0x%x\n", 
+            ifname, port, vlan, obj_id, flag, vlan_flags);
+
+	//TODO check flag for Bridge root
+
+
+	//check vlan_flags
+	//pvid = vlan_flags & BRIDGE_VLAN_INFO_PVID;
+	untagged = vlan_flags & BRIDGE_VLAN_INFO_UNTAGGED;
+
+	bcm_vlan_create(0, vlan); // create if does not exist
+
+	//config port
+	/* Untagged vlan classification */
+    BCM_PBMP_PORT_SET(pbmp, port);
+
+    if (untagged) {
+        BCM_PBMP_PORT_SET(ubmp, port);
+    } else {
+        BCM_PBMP_CLEAR(ubmp);
+    }
+
+    err = bcm_vlan_port_add(0, vlan, pbmp, ubmp);
+
+	return err;
+}
+
+static int handle_switchdev_port_obj_add(struct nlattr *tb[])
+{
 	int   obj_id;
 	int   err = 0;
 
-    port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
-	flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
-    ifname = nla_get_string(tb[SWITCHDEV_A_PORT_IF_NAME]);
-	vlan = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_ID]);
 	obj_id = nla_get_u32(tb[SWITCHDEV_A_PORT_OBJ_ID]);
 
-	printf("handle_switchdev_port_obj_add name %s port %d vlan %d obj_id %d flag 0x%x\n", 
-            ifname, port, vlan, obj_id, flag);
+	switch (obj_id) {
+		case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		    err = handle_switchdev_port_vlan_add(tb);
+			break;
+        
+        case SWITCHDEV_OBJ_ID_PORT_MDB:
+		case SWITCHDEV_OBJ_ID_HOST_MDB:
+		default:
+		    break;
+    }
+	
+	return err;
+}
+
+
+
+static int handle_switchdev_port_vlan_del(struct nlattr *tb[])
+{
+	char *ifname;
+	int   port, if_flag;
+	int   vlan, vlan_flags;
+	int   err = 0;
+	bool  untagged;
+    bcm_pbmp_t pbmp, ubmp, ing_pbmp;
+
+    port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
+	if_flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
+    ifname = nla_get_string(tb[SWITCHDEV_A_PORT_IF_NAME]);
+	vlan = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_ID]);
+	vlan_flags = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_FLAGS]);
+	
+
+
+	printf("switchdev_port_vlan_del name %s port %d vlan %d obj_id %d flag 0x%x vlan_flags 0x%x\n", 
+            ifname, port, vlan, obj_id, flag, vlan_flags);
+
+	//TODO check flag for Bridge root
+
+	//config port
+	/* Untagged vlan classification */
+    BCM_PBMP_PORT_SET(pbmp, port);
+
+    err = bcm_vlan_port_remove(0, vlan, pbmp);
 
 	return err;
+}
 
+static int handle_switchdev_port_obj_del(struct nlattr *tb[])
+{
+	int   obj_id;
+	int   err = 0;
+
+	obj_id = nla_get_u32(tb[SWITCHDEV_A_PORT_OBJ_ID]);
+
+	switch (obj_id) {
+		case SWITCHDEV_OBJ_ID_PORT_VLAN:
+		    err = handle_switchdev_port_vlan_del(tb);
+			break;
+        
+        case SWITCHDEV_OBJ_ID_PORT_MDB:
+		case SWITCHDEV_OBJ_ID_HOST_MDB:
+		default:
+		    break;
+    }
+	
+	return err;
 }
 
 
@@ -145,9 +243,12 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
     event = nla_get_u32(tb[SWITCHDEV_A_PORT_EVENT_ID]);
 
 	switch (event) {
-       case SWITCHDEV_PORT_OBJ_ADD:
-          err = handle_switchdev_port_obj_add(tb);
-		  break;
+        case SWITCHDEV_PORT_OBJ_ADD:
+            err = handle_switchdev_port_obj_add(tb);
+		    break;
+	    case SWITCHDEV_PORT_OBJ_DEL:
+            err = handle_switchdev_port_obj_del(tb);
+		    break;
 	   default:
 	       break;
 
