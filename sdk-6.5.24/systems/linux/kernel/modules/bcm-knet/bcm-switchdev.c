@@ -566,7 +566,7 @@ int switchdev_port_obj_del_netlink(struct net_device *dev, const void *ctx,
 {
     int err; 
 
-    err = switchdev_port_event_send(SWITCHDEV_PORT_OBJ_DELL, dev, ctx, obj, NULL);
+    err = switchdev_port_event_send(SWITCHDEV_PORT_OBJ_DEL, dev, ctx, obj, NULL);
 
     return err;
 }

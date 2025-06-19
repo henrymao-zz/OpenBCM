@@ -110,7 +110,7 @@ static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 	int   vlan, vlan_flags;
 	int   err = 0;
 	bool  untagged;
-    bcm_pbmp_t pbmp, ubmp, ing_pbmp;
+    bcm_pbmp_t pbmp, ubmp;
 
     port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
 	if_flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
@@ -120,8 +120,8 @@ static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 	
 
 
-	printf("switchdev_port_vlan_add name %s port %d vlan %d obj_id %d flag 0x%x vlan_flags 0x%x\n", 
-            ifname, port, vlan, obj_id, flag, vlan_flags);
+	printf("switchdev_port_vlan_add name %s port %d vlan %d flag 0x%x vlan_flags 0x%x\n", 
+            ifname, port, vlan, if_flag, vlan_flags);
 
 	//TODO check flag for Bridge root
 
@@ -176,8 +176,7 @@ static int handle_switchdev_port_vlan_del(struct nlattr *tb[])
 	int   port, if_flag;
 	int   vlan, vlan_flags;
 	int   err = 0;
-	bool  untagged;
-    bcm_pbmp_t pbmp, ubmp, ing_pbmp;
+    bcm_pbmp_t pbmp;
 
     port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
 	if_flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
@@ -187,8 +186,8 @@ static int handle_switchdev_port_vlan_del(struct nlattr *tb[])
 	
 
 
-	printf("switchdev_port_vlan_del name %s port %d vlan %d obj_id %d flag 0x%x vlan_flags 0x%x\n", 
-            ifname, port, vlan, obj_id, flag, vlan_flags);
+	printf("switchdev_port_vlan_del name %s port %d vlan %d flag 0x%x vlan_flags 0x%x\n", 
+            ifname, port, vlan, if_flag, vlan_flags);
 
 	//TODO check flag for Bridge root
 
