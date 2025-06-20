@@ -519,23 +519,61 @@ int knet_portconfig_init(int unit)
         }
 
         //Create filter for KNET interface
+        //bcm_knet_filter_t_init(&filter);
+        //filter.type = BCM_KNET_FILTER_T_RX_PKT;
+        //filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
+        //sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
+        //filter.priority = 100;
+        //filter.dest_type = BCM_KNET_DEST_T_NETIF;
+        //filter.dest_id = netif.port;
+        //filter.dest_proto = 0;
+
+        //filter.cb_user_data = 0;
+
+        //filter.m_ingport = netif.port;
+        //filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
+
+
+        /* Add filter to catch protocol packets */
         bcm_knet_filter_t_init(&filter);
+
+        sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
         filter.type = BCM_KNET_FILTER_T_RX_PKT;
         filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
-        sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
-        filter.priority = 100;
+        filter.priority = 50;
+        /* Send packet to network interface */
         filter.dest_type = BCM_KNET_DEST_T_NETIF;
-        filter.dest_id = netif.port;
-        filter.dest_proto = 0;
+        filter.dest_id = netif.id;
+        filter.match_flags = BCM_KNET_FILTER_M_REASON;
+        BCM_RX_REASON_SET(&filter.m_reason, bcmRxReasonProtocol);
+        //printf("bcm_knet_filter_create 1\n");
+        rv = bcm_knet_filter_create(unit, &filter);
+        if(BCM_FAILURE(rv)) {
+            printf("\nError in bcm_knet_filter_create() : %s\n", bcm_errmsg(rv));
+            return rv;
+        }
 
-        filter.cb_user_data = 0;
+        /* Add filter to catch nexthop packets */
+        bcm_knet_filter_t_init(&filter);
+        
+        sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
+        filter.type = BCM_KNET_FILTER_T_RX_PKT;
+        filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
+        filter.priority = 55;
+        filter.dest_type = BCM_KNET_DEST_T_NETIF;
+        filter.dest_id = netif.id;
+        filter.match_flags = BCM_KNET_FILTER_M_REASON;
+        BCM_RX_REASON_SET(&filter.m_reason, bcmRxReasonFilterMatch);
+        //printf("bcm_knet_filter_create 2\n");
+        rv = bcm_knet_filter_create(unit, &filter);
+        if(BCM_FAILURE(rv)) {
+            printf("\nError in bcm_knet_filter_create() : %s\n", bcm_errmsg(rv));
+            return rv;
+        }
 
-        filter.m_ingport = netif.port;
-        filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
-
-        if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
-            printf("Error creating packet filter: %d\n", rv);
-        }    
+        //if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
+        //    printf("Error creating packet filter: %d\n", rv);
+        //}    
     }
 
     fclose(fp);
