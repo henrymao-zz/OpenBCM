@@ -521,10 +521,11 @@ int knet_portconfig_init(int unit)
         //Create filter for KNET interface
         bcm_knet_filter_t_init(&filter);
         filter.type = BCM_KNET_FILTER_T_RX_PKT;
+        filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
         sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
         filter.priority = 100;
         filter.dest_type = BCM_KNET_DEST_T_NETIF;
-        filter.dest_id = 1;
+        filter.dest_id = netif.port;
         filter.dest_proto = 0;
 
         filter.cb_user_data = 0;
