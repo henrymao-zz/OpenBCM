@@ -519,65 +519,211 @@ int knet_portconfig_init(int unit)
         }
 
         //Create filter for KNET interface
-        //bcm_knet_filter_t_init(&filter);
-        //filter.type = BCM_KNET_FILTER_T_RX_PKT;
+        bcm_knet_filter_t_init(&filter);
+        filter.type = BCM_KNET_FILTER_T_RX_PKT;
         //filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
-        //sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
-        //filter.priority = 100;
-        //filter.dest_type = BCM_KNET_DEST_T_NETIF;
-        //filter.dest_id = netif.port;
-        //filter.dest_proto = 0;
-
-        //filter.cb_user_data = 0;
-
-        //filter.m_ingport = netif.port;
-        //filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
-
-
-        /* Add filter to catch protocol packets */
-        bcm_knet_filter_t_init(&filter);
-
         sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
-        filter.type = BCM_KNET_FILTER_T_RX_PKT;
-        filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
-        filter.priority = 50;
-        /* Send packet to network interface */
+        filter.priority = 100;
         filter.dest_type = BCM_KNET_DEST_T_NETIF;
-        filter.dest_id = netif.id;
-        filter.match_flags = BCM_KNET_FILTER_M_REASON;
-        BCM_RX_REASON_SET(&filter.m_reason, bcmRxReasonProtocol);
-        //printf("bcm_knet_filter_create 1\n");
-        rv = bcm_knet_filter_create(unit, &filter);
-        if(BCM_FAILURE(rv)) {
-            printf("\nError in bcm_knet_filter_create() : %s\n", bcm_errmsg(rv));
-            return rv;
-        }
+        filter.dest_id = netif.port;
+        filter.dest_proto = 0;
 
-        /* Add filter to catch nexthop packets */
-        bcm_knet_filter_t_init(&filter);
-        
-        sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
-        filter.type = BCM_KNET_FILTER_T_RX_PKT;
-        filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
-        filter.priority = 55;
-        filter.dest_type = BCM_KNET_DEST_T_NETIF;
-        filter.dest_id = netif.id;
-        filter.match_flags = BCM_KNET_FILTER_M_REASON;
-        BCM_RX_REASON_SET(&filter.m_reason, bcmRxReasonFilterMatch);
-        //printf("bcm_knet_filter_create 2\n");
-        rv = bcm_knet_filter_create(unit, &filter);
-        if(BCM_FAILURE(rv)) {
-            printf("\nError in bcm_knet_filter_create() : %s\n", bcm_errmsg(rv));
-            return rv;
-        }
+        filter.cb_user_data = 0;
 
-        //if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
-        //    printf("Error creating packet filter: %d\n", rv);
-        //}    
+        filter.m_ingport = netif.port;
+        filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
+
+        if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
+            printf("Error creating packet filter: %d\n", rv);
+        }    
     }
 
     fclose(fp);
     return 0;
+}
+
+int switchdev_field_processor_init(int unit)
+{
+    bcm_error_t rv = BCM_E_NONE;
+    bcm_field_group_config_t group_config;
+    bcm_field_entry_t eid;
+    //bcm_vlan_t vlan = 2, vlan_mask = 0xfff;
+    bcm_port_t port = 0, port_mask = 0xffffffff;
+    int prio;
+
+    /* Enable IFP for CPU port */
+    rv = bcm_port_control_set(unit, port, bcmPortControlFilterIngress, 1);
+
+    /* FP group configuration and creation */
+    bcm_field_group_config_t_init(&group_config);
+
+    BCM_FIELD_QSET_INIT(group_config.qset);
+    BCM_FIELD_QSET_ADD(group_config.qset, bcmFieldQualifyStageIngress);
+    BCM_FIELD_QSET_ADD(group_config.qset, bcmFieldQualifyInPort);
+
+    group_config.mode = bcmFieldGroupModeAuto;
+
+    rv = bcm_field_group_config_create(unit, &group_config);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_group_config_create() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* FP entry configuration and creation */
+
+    // EID 1
+    rv = bcm_field_entry_create(unit, group_config.group, &eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_create() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    
+    rv = bcm_field_qualify_DstL3Egress(unit, eid, port);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_DstL3Egress() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* FP entry actions configuration */
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionPrioIntNew, 0x7, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* Installing FP entry to FP TCAM */
+    rv = bcm_field_entry_install(unit, eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_install() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    //EID 2
+    rv = bcm_field_entry_create(unit, group_config.group, &eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_create() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_EtherType(unit, eid, 0x00000800, 0x0000ffff);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_Ttl(unit, eid, 0x00000000, 0x000000fe);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_Ttl() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_MyStationHit(unit, eid, 0x1, 0x1);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_MyStationHit() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* FP entry actions configuration */
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionRpDrop, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionUnmodifiedPacketRedirectPort, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionGpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionGpPrioIntNew, 0x7, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionCosQCpuNew, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    //TODO create policer and attach to eid
+
+    //TODO create stats and attach to eid
+
+
+    /* Installing FP entry to FP TCAM */
+    rv = bcm_field_entry_install(unit, eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_install() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    //EID 3 ARP
+    rv = bcm_field_entry_create(unit, group_config.group, &eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_create() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_DstMac(unit, eid, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff});
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    rv = bcm_field_qualify_EtherType(unit, eid, 0x00000806, 0x0000ffff);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_IpType(unit, eid, 0x00000008, 0x0000001f);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_IpType() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_InterfaceClassL2(unit, eid, 0x1, 0x1);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_MyStationHit() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* FP entry actions configuration */
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionYpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionGpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionGpPrioIntNew, 0x7, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionCosQCpuNew, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    return rv;
+
 }
 
 
@@ -631,6 +777,8 @@ int do_per_switch_setup(int unit)
     //Create KNET interfaces
     knet_portconfig_init(unit);
 
+    //Initialize field processor
+    switchdev_field_processor_init(unit);
     return 0;
 }
 
