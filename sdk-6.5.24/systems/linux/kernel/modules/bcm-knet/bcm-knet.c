@@ -4314,11 +4314,11 @@ bkn_do_skb_rx(bkn_switch_info_t *sinfo, int chan, int budget)
                             }
                         }
                     } else {
-                        uint16_t vlan_proto = PKT_U16_GET(pkt, 12);
+                        uint16_t vlan_proto = PKT_U16_GET(skb->data, 12);
                         /* Strip the VLAN tag for 4095 */
                         if (vlan_proto == ETH_P_8021Q ||
                             vlan_proto == ETH_P_8021AD) {
-                            uint16_t tci = PKT_U16_GET(pkt, 14);
+                            uint16_t tci = PKT_U16_GET(skb->data, 14);
                             
                             if (tci == 0xFFF) {
                                 DBG_FLTR(("Strip VLAN tag\n"));
