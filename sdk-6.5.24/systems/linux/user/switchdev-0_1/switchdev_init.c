@@ -548,8 +548,9 @@ int switchdev_field_processor_init(int unit)
     bcm_field_group_config_t group_config;
     bcm_field_entry_t eid;
     //bcm_vlan_t vlan = 2, vlan_mask = 0xfff;
-    bcm_port_t port = 0, port_mask = 0xffffffff;
-    int prio;
+    bcm_port_t port = 0; //port_mask = 0xffffffff;
+    bcm_mac_t mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    //int prio;
 
     /* Enable IFP for CPU port */
     rv = bcm_port_control_set(unit, port, bcmPortControlFilterIngress, 1);
@@ -673,7 +674,7 @@ int switchdev_field_processor_init(int unit)
         return rv;
     }
 
-    rv = bcm_field_qualify_DstMac(unit, eid, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff});
+    rv = bcm_field_qualify_DstMac(unit, eid, mac_mask, mac_mask);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -685,7 +686,7 @@ int switchdev_field_processor_init(int unit)
         return rv;
     }
 
-    rv = bcm_field_qualify_IpType(unit, eid, 0x00000008, 0x0000001f);
+    rv = bcm_field_qualify_IpType(unit, eid, bcmFieldIpTypeArpRequest);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_qualify_IpType() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -778,7 +779,7 @@ int do_per_switch_setup(int unit)
     knet_portconfig_init(unit);
 
     //Initialize field processor
-    switchdev_field_processor_init(unit);
+    //switchdev_field_processor_init(unit);
     return 0;
 }
 
