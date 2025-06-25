@@ -3855,7 +3855,24 @@ bkn_do_api_rx(bkn_switch_info_t *sinfo, int chan, int budget)
                                 }
                             }
                         }
+                    } else {
+                        uint16_t vlan_proto = PKT_U16_GET(pkt, 12);
+                        /* Strip the VLAN tag for 4095 */
+                        if (vlan_proto == ETH_P_8021Q ||
+                            vlan_proto == ETH_P_8021AD) {
+                            uint16_t tci = PKT_U16_GET(pkt, 14);
+                            
+                            if (tci == 0xFFF) {
+                                DBG_FLTR(("Strip VLAN tag\n"));
+                                for (idx = 11; idx >= 0; idx--) {
+                                    pkt[idx+4] = pkt[idx];
+                                }
+                                pktlen -= 4;
+                                pkt += 4;
+                            }
+                        }
                     }
+
 
                     skb_copy_to_linear_data(skb, pkt, pktlen);
                     if (device_is_sand(sinfo)) {
@@ -3994,7 +4011,7 @@ bkn_skb_rx_netif_process(bkn_switch_info_t *sinfo, int dest_id, int chan,
                 }
             }
         }
-    }
+    } 
 
     priv->stats.rx_packets++;
     priv->stats.rx_bytes += skb->len;
@@ -4296,7 +4313,34 @@ bkn_do_skb_rx(bkn_switch_info_t *sinfo, int chan, int budget)
                                 }
                             }
                         }
+                    } else {
+                        uint16_t vlan_proto = PKT_U16_GET(pkt, 12);
+                        /* Strip the VLAN tag for 4095 */
+                        if (vlan_proto == ETH_P_8021Q ||
+                            vlan_proto == ETH_P_8021AD) {
+                            uint16_t tci = PKT_U16_GET(pkt, 14);
+                            
+                            if (tci == 0xFFF) {
+                                DBG_FLTR(("Strip VLAN tag\n"));
+                                ((u32*)skb->data)[3] = ((u32*)skb->data)[2];
+                                ((u32*)skb->data)[2] = ((u32*)skb->data)[1];
+                                ((u32*)skb->data)[1] = ((u32*)skb->data)[0];
+                                skb_pull(skb, 4);
+                                if (device_is_sand(sinfo)) {
+                                    for (idx = pkt_hdr_size; idx >= 4; idx--) {
+                                        pkt[idx] = pkt[idx - 4];
+                                    }
+                                } else if (sinfo->cmic_type == 'x') {
+                                    for (idx = pkt_hdr_size / sizeof(uint32_t);
+                                         idx; idx--) {
+                                        meta[idx] = meta[idx - 1];
+                                    }
+                                    meta++;
+                                }
+                            }
+                        }
                     }
+
                     if (device_is_sand(sinfo)) {
                         rx_cb_meta = sand_scratch_data;
                     } else {
