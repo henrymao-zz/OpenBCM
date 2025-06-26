@@ -855,6 +855,7 @@ int switchdev_field_processor_init(int unit)
     bcm_port_t               port = 0; //port_mask = 0xffffffff;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     bcm_mac_t                lldp_mac = {0x01, 0x80, 0xc2, 0x00, 0x00, 0x00};
+    bcm_mac_t                cdp_mac = {0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcc};
     bcm_policer_t            policerId;
     bcm_policer_config_t     pol_cfg;    
     bcm_field_stat_t         stat_arr[9];
@@ -1154,11 +1155,10 @@ int switchdev_field_processor_init(int unit)
     }    
     // EID 0x19, LLDP 01:00:0c:cc:cc:cc  (CDP)
     eid = 0x19;
-    lldp_mac = {0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcc};
     rv = switchdev_fp_add_lldp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    lldp_mac,
+                                    cdp_mac,
                                     mac_mask, 
                                     policerId,
                                     statid);
