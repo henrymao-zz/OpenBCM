@@ -549,7 +549,6 @@ int knet_portconfig_init(int unit)
 static int switchdev_fp_add_l3forus_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,
-                                          int prio,
                                           bcm_policer_t policerId,
                                           int statid) 
 {
@@ -562,7 +561,7 @@ static int switchdev_fp_add_l3forus_entry(int unit,
         return rv;
     }
     
-    rv = bcm_field_entry_prio_set(unit, eid, prio);
+    rv = bcm_field_entry_prio_set(unit, eid, 0x4);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_entry_prio_set() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -639,7 +638,6 @@ static int switchdev_fp_add_l3forus_entry(int unit,
 static int switchdev_fp_add_arp_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,
-                                          int prio,
                                           bcm_mac_t mac_addr,
                                           bcm_mac_t mac_mask,
                                           bcm_field_IpType_t iptype,
@@ -655,7 +653,7 @@ static int switchdev_fp_add_arp_entry(int unit,
         return rv;
     }
 
-    rv = bcm_field_entry_prio_set(unit, eid, prio);
+    rv = bcm_field_entry_prio_set(unit, eid, 0x4);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_entry_prio_set() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -851,7 +849,6 @@ int switchdev_field_processor_init(int unit)
     rv = switchdev_fp_add_l3forus_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    0x4,
                                     policerId,
                                     statid);
     if (rv != BCM_E_NONE) {
@@ -907,7 +904,6 @@ int switchdev_field_processor_init(int unit)
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    0x4,
                                     mac_mask, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpRequest,
@@ -923,7 +919,6 @@ int switchdev_field_processor_init(int unit)
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    0x4,
                                     system_mac, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpRequest,
@@ -940,7 +935,6 @@ int switchdev_field_processor_init(int unit)
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    0x4,
                                     mac_mask, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpReply,
