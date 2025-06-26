@@ -552,7 +552,7 @@ int switchdev_field_processor_init(int unit)
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     bcm_policer_t            policerId;
     bcm_policer_config_t     pol_cfg;    
-    bcm_field_stat_t         stat_arr[_BCM_CLI_STAT_ARR_SIZE];
+    bcm_field_stat_t         stat_arr[9];
     int                      stat_arr_sz;     
     int                      statid = -1;
     //int prio;
@@ -591,9 +591,6 @@ int switchdev_field_processor_init(int unit)
     /* Set group gid value and flag bit */
     group_config.flags |= BCM_FIELD_GROUP_CREATE_WITH_ID;
     group_config.group = 1;    
-
-    /* Set group pbmp value and flag bit */
-    group_config.flags |= BCM_FIELD_GROUP_CREATE_WITH_PORT;
 
     rv = bcm_field_group_config_create(unit, &group_config);
     if(BCM_FAILURE(rv)) {
@@ -689,7 +686,7 @@ int switchdev_field_processor_init(int unit)
         printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
         return rv;
     }
-    rv = bcm_field_actsion_add(unit, eid, bcmFieldActionYpCopyToCpu, 0, 0);
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionYpCopyToCpu, 0, 0);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -700,14 +697,14 @@ int switchdev_field_processor_init(int unit)
     if (rv != BCM_E_NONE) {
         printf("Failed to attach policer for unit: %d, entry %d Error:%s (%d)\r\n",
                 unit, eid,  bcm_errmsg (rv), rv);
-        return rrc;
+        return rv;
     }
 
     rv = bcm_field_entry_stat_attach(unit, eid, statid);
     if (rv != BCM_E_NONE) {
         printf("Failed to attach stat for unit: %d, entry %d Error:%s (%d)\r\n",
                 unit, eid,  bcm_errmsg (rv), rv);
-        return rrc;
+        return rv;
     }
     /* install and enable entry*/
     rv = bcm_field_entry_install(unit, eid);
