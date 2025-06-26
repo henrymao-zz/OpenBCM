@@ -505,7 +505,7 @@ int knet_portconfig_init(int unit)
         netif.vlan = 0;
         // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
         netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
-        netif.mac_addr = system_mac;
+        memcpy(netif.mac_addr, system_mac, sizeof(bcm_mac_t));
         netif.cb_user_data = 0;
 
         token = strtok(line, " ");
@@ -571,7 +571,7 @@ static int switchdev_fp_add_arp_entry(int unit,
 
     //Remove CPU 
     BCM_PBMP_CLEAR(pbm_mask);
-    BCM_PBMP_CLEAR(pbmk);
+    BCM_PBMP_CLEAR(pbm);
     BCM_PBMP_PORT_SET(pbm_mask, 0);
     rv = bcm_field_qualify_InPorts(unit, eid, pbm, pbm_mask);
     if(BCM_FAILURE(rv)) {
@@ -646,6 +646,7 @@ static int switchdev_fp_add_arp_entry(int unit,
         return rv;
     }    
 
+    return rv;
 }
 
 
@@ -761,9 +762,10 @@ int switchdev_field_processor_init(int unit)
             return rv;
     }
     // EID 0x11, ARP request forus                               
+    eid = 0x11;
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
-                                    0x11, 
+                                    eid, 
                                     system_mac, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpRequest,
@@ -776,9 +778,10 @@ int switchdev_field_processor_init(int unit)
     }        
 
     // EID 0x13, ARP reply
+    eid = 0x13;
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
-                                    0x10, 
+                                    eid, 
                                     mac_mask, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpReply,
@@ -790,9 +793,10 @@ int switchdev_field_processor_init(int unit)
             return rv;
     }
     // EID 0x14, ARP reply
+    eid = 0x14;
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
-                                    0x10, 
+                                    eid, 
                                     system_mac, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpReply,
