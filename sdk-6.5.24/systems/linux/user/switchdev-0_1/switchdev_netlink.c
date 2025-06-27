@@ -255,6 +255,75 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 	return err;
 }
 
+void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
+{
+    struct nl_addr   *nl_addr;
+    uint32_t          ifindex;
+	struct rtnl_addr *addr;
+	char              ifname[IF_NAMESIZE+1];
+
+
+	addr = (struct rtnl_addr *)obj;
+
+	ifindex = rtnl_addr_get_ifindex(addr);
+	if_indextoname(ifindex, ifname);
+    nl_addr = rtnl_addr_get_local(addr);
+
+    if (rtnl_addr_get_family(addr) == AF_INET) {
+        ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        prefixlen = nl_addr_get_prefixlen(nl_addr);
+
+        printf("index %d %s address 0x%x prefix %d\n",
+                ifindex, ifname, ipv4_addr, prefixlen);
+
+	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
+        printf("IPV6  index %d %s\n",ifindex, ifname);	
+	}
+}
+void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
+{
+   printf("switchdev_event_handler_obj_input_deladdr \n");
+}
+
+static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
+{
+    struct nlmsghdr *nlh = nlmsg_hdr(msg);
+    unsigned int event = 1;
+
+    /* Update netlink message counters */
+    //system_update_netlink_counters(nlh->nlmsg_type, nlh);
+
+    switch (nlh->nlmsg_type)
+    {
+        case RTM_NEWLINK:
+            break;
+
+        case RTM_DELLINK:
+            break;
+
+        case RTM_NEWNEIGH:
+        case RTM_DELNEIGH:
+            break;
+
+        case RTM_NEWADDR:
+            if (nl_msg_parse(msg, &switchdev_event_handler_obj_input_newaddr, NULL) < 0) {
+                printf("Unknown message type.");
+			}
+            break;
+        case RTM_DELADDR:
+            if (nl_msg_parse(msg, &switchdev_event_handler_obj_input_deladdr, NULL) < 0) {
+                printf("Unknown message type.");
+		    }
+            break;
+
+        default:
+            return NL_OK;
+    }
+
+    return NL_STOP;
+}
+
+
 /*
  * Handler for all received messages from our Generic Netlink family, both
  * unicast and multicast.
@@ -381,8 +450,8 @@ static void set_nonblocking(int fd)
 int switchdev_netlink_main(void)
 {
 	int		ret = 1;
-	struct  nl_sock *ucsk, *mcsk;
-	int     ucsk_fd, mcsk_fd, timer_fd;
+	struct  nl_sock *ucsk, *mcsk, route_event_sock;
+	int     ucsk_fd, mcsk_fd, route_event_fd, timer_fd;
 	int     epoll_fd;
     struct epoll_event ev, events[EPOLL_MAX_EVENTS];
 	struct itimerspec keepalive_value = {
@@ -468,6 +537,33 @@ int switchdev_netlink_main(void)
 	ev.events = EPOLLIN;
     ev.data.fd = timer_fd;
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev);
+	
+
+	//create netlink socket for route event
+    route_event_sock = nl_socket_alloc();
+	ret = nl_connect(route_event_sock, NETLINK_ROUTE);
+    if (ret)
+    {
+        printf("Failed to connect to netlink route_event_sock. ");
+		goto out;
+    }
+    nl_socket_disable_seq_check(route_event_sock);
+	route_event_sock_fd = nl_socket_get_fd(route_event_sock);
+	set_nonblocking(route_event_sock_fd);
+
+    nl_socket_modify_cb(route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
+                        switchdev_route_event_handler, NULL);
+
+    err = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
+    if (err < 0)
+    {
+        printf("Failed to add netlink membership.");
+        goto out;
+    }
+
+	ev.events = EPOLLIN;
+    ev.data.fd = route_event_sock_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, route_event_sock_fd, &ev);
 
     while (1) {
         int nfds = epoll_wait(epoll_fd, events, 10, -1);
@@ -478,6 +574,8 @@ int switchdev_netlink_main(void)
                 nl_recvmsgs_default(mcsk);
 			} else if (events[i].data.fd == timer_fd) {
                 send_keepalive_msg(ucsk, fam);
+			} else if (events[i].data.fd == route_event_sock_fd) {
+                nl_recvmsgs_default(route_event_sock);
 			} else {
                prerr("unknown event %d\n", events[i].data.fd);
 			}
@@ -488,6 +586,7 @@ int switchdev_netlink_main(void)
 out:
 	disconn(ucsk);
 	disconn(mcsk);
+	disconn(route_event_sock);
 	return ret;
 }
 
