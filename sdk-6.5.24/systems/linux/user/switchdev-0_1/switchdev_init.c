@@ -1168,6 +1168,8 @@ int switchdev_field_processor_init(int unit)
     return rv;
 }
 
+bcm_if_t punt_l3_interface;
+
 int switchdev_vlan_init(int unit)
 {
     bcm_error_t              rv = BCM_E_NONE;
@@ -1175,6 +1177,8 @@ int switchdev_vlan_init(int unit)
     bcm_port_config_t        port_config;
     bcm_port_t               port;
     bcm_vlan_t               route_vlan = 4095;
+    bcm_l3_intf_t            l3_intf;
+    bcm_l3_egress_t          egress_object;    
 
     bcm_port_config_get(unit, &port_config);    
     
@@ -1195,8 +1199,31 @@ int switchdev_vlan_init(int unit)
     //Config VLAN4095 for L3 
     //  1. create L3 interface
     //  2. create L3 egress
+    bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
 
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+    l3_intf.l3a_vid = 4095;
+    l3_intf.l3a_vrf = 0;
+    rv = bcm_l3_intf_create(unit, &l3_intf);
+    if (BCM_FAILURE(rv)) {
+        printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
+        return;
+    }    
 
+    /* L3 Egress */
+    bcm_l3_egress_t_init(&egress_object);
+    egress_object.intf = 8191;
+    egress_object.module = 0;
+    egress_object.port = 0;
+    memcpy(egress_object.mac_addr, system_mac, sizeof(system_mac));
+
+    rv = bcm_l3_egress_create(unit, 0, &egress_object, &punt_l3_interface);
+    if (BCM_FAILURE(rv)) {
+        printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
+        return ;
+    }    
     return rv;
 }
 

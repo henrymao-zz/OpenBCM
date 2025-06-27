@@ -261,6 +261,8 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 	return err;
 }
 
+extern bcm_if_t punt_l3_interface;
+
 void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 {
     struct nl_addr   *nl_addr;
@@ -269,6 +271,7 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 	char              ifname[IF_NAMESIZE+1];
     uint32_t          ipv4_addr;
     uint8_t           prefixlen;
+	bcm_l3_host_t     host_info;
 
 
 	addr = (struct rtnl_addr *)obj;
@@ -283,6 +286,16 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 
         printf("index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
+
+		//Create l3table, and bind to l3 egress object
+		//TODO, need to be more accurate
+		if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+			bcm_l3_host_t_init(&host_info);
+            host_info.l3a_ip_addr = ip_addr;
+			host_info.l3a_intf = punt_l3_interface;
+			host_info.l3a_lookup_class = 1;
+            bcm_l3_host_add(0, &host_info);
+		}
 
 	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         printf("IPV6  index %d %s\n",ifindex, ifname);	
