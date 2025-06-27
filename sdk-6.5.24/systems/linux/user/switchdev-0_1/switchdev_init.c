@@ -662,7 +662,7 @@ static int switchdev_fp_add_arp_entry(int unit,
         return rv;
     }
 
-    rv = bcm_field_qualify_DstMac(unit, eid, mac_mask, mac_mask);
+    rv = bcm_field_qualify_DstMac(unit, eid, mac_addr, mac_mask);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -772,7 +772,7 @@ static int switchdev_fp_add_lldp_entry(int unit,
         return rv;
     }
 
-    rv = bcm_field_qualify_DstMac(unit, eid, mac_mask, mac_mask);
+    rv = bcm_field_qualify_DstMac(unit, eid, mac_addr, mac_mask);
     if(BCM_FAILURE(rv)) {
         printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
         return rv;
@@ -1063,8 +1063,6 @@ int switchdev_field_processor_init(int unit)
             return rv;
     }
 
-    return rv;
-
     /*************************************************************************************/
     /* LLDP                                                                              */
     /*************************************************************************************/ 
@@ -1167,6 +1165,7 @@ int switchdev_field_processor_init(int unit)
                     eid, unit,  bcm_errmsg (rv), rv);
             return rv;
     }    
+    return rv;
 }
 
 
