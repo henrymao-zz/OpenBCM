@@ -207,7 +207,7 @@ endif
 ADD_TO_CFLAGS += -DLINUX_SAL_DMA_ALLOC_OVERRIDE
 
 # Add netlink 
-ADD_TO_CFLAGS += $(shell pkg-config --cflags libnl-3.0 libnl-genl-3.0)
+ADD_TO_CFLAGS += $(shell pkg-config --cflags libnl-3.0 libnl-genl-3.0 libnl-route-3.0)
 
 # User BDE libraries
 ADD_TO_KCFLAGS += -I$(SDK)/systems/bde/linux/include
@@ -482,7 +482,7 @@ $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 $(DEST_DIR)/libbcm.so: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
 	$(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
-	-lopennsa $(shell pkg-config --libs libnl-3.0 libnl-genl-3.0) -o $@
+	-lopennsa $(shell pkg-config --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) -o $@
 
 $(BCM): $(BCM).dbg
 	mkdir -p $(@D)
@@ -502,7 +502,7 @@ else
 	@echo Linking $@ dynamically # This is needed for error parsing
 endif
 	$(LINKER) $(CFLAGS) -o $@ $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o \
-	$(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0) \
+	$(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) \
 	-Wl,--start-group ${PLATFORM_DEFINES_OBJ} $(BCM_LIBS_BLD)  -Wl,--end-group $(LDFLAGS)
 
 $(BCM_ISSUDLL) $(BCMLT_ISSUDLL) : $(BCM)

@@ -13,9 +13,15 @@
 #include <stdbool.h>
 #include <netlink/socket.h>
 #include <netlink/netlink.h>
+#include <netlink/msg.h>
+#include <netlink/attr.h>
+#include <netlink/types.h>
+#include <netlink/route/addr.h>
 #include <netlink/genl/ctrl.h>
 #include <netlink/genl/genl.h>
 #include <netlink/genl/family.h>
+#include <netlink/route/link.h>
+#include <net/if.h>
 
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
@@ -261,6 +267,8 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
     uint32_t          ifindex;
 	struct rtnl_addr *addr;
 	char              ifname[IF_NAMESIZE+1];
+    uint32_t          ipv4_addr;
+    uint8_t           prefixlen;
 
 
 	addr = (struct rtnl_addr *)obj;
@@ -288,7 +296,7 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 {
     struct nlmsghdr *nlh = nlmsg_hdr(msg);
-    unsigned int event = 1;
+    //unsigned int event = 1;
 
     /* Update netlink message counters */
     //system_update_netlink_counters(nlh->nlmsg_type, nlh);
@@ -450,7 +458,7 @@ static void set_nonblocking(int fd)
 int switchdev_netlink_main(void)
 {
 	int		ret = 1;
-	struct  nl_sock *ucsk, *mcsk, route_event_sock;
+	struct  nl_sock *ucsk, *mcsk, *route_event_sock;
 	int     ucsk_fd, mcsk_fd, route_event_fd, timer_fd;
 	int     epoll_fd;
     struct epoll_event ev, events[EPOLL_MAX_EVENTS];
@@ -548,22 +556,22 @@ int switchdev_netlink_main(void)
 		goto out;
     }
     nl_socket_disable_seq_check(route_event_sock);
-	route_event_sock_fd = nl_socket_get_fd(route_event_sock);
-	set_nonblocking(route_event_sock_fd);
+	route_event_fd = nl_socket_get_fd(route_event_sock);
+	set_nonblocking(route_event_fd);
 
     nl_socket_modify_cb(route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
                         switchdev_route_event_handler, NULL);
 
-    err = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
-    if (err < 0)
+    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
+    if (ret < 0)
     {
         printf("Failed to add netlink membership.");
         goto out;
     }
 
 	ev.events = EPOLLIN;
-    ev.data.fd = route_event_sock_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, route_event_sock_fd, &ev);
+    ev.data.fd = route_event_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, route_event_fd, &ev);
 
     while (1) {
         int nfds = epoll_wait(epoll_fd, events, 10, -1);
@@ -574,7 +582,7 @@ int switchdev_netlink_main(void)
                 nl_recvmsgs_default(mcsk);
 			} else if (events[i].data.fd == timer_fd) {
                 send_keepalive_msg(ucsk, fam);
-			} else if (events[i].data.fd == route_event_sock_fd) {
+			} else if (events[i].data.fd == route_event_fd) {
                 nl_recvmsgs_default(route_event_sock);
 			} else {
                prerr("unknown event %d\n", events[i].data.fd);

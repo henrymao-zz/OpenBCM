@@ -1179,7 +1179,7 @@ int switchdev_vlan_init(int unit)
     bcm_port_config_get(unit, &port_config);    
     
     //Create VLAN 4095
-    bcm_vlan_create(route_vlan);
+    bcm_vlan_create(unit,route_vlan);
 
     //Set if_class = 1
     bcm_vlan_control_vlan_get(unit, route_vlan, &vlan_control);
@@ -1187,7 +1187,7 @@ int switchdev_vlan_init(int unit)
     bcm_vlan_control_vlan_set(unit, route_vlan, vlan_control);
 
     //Put all ports into VLAN 4095 -untagged (routed port)
-    bcm_vlan_port_add(unit, route_vlan, port_config->port, port_config->port);
+    bcm_vlan_port_add(unit, route_vlan, port_config.port, port_config.port);
 
     BCM_PBMP_ITER(port_config.port, port) {
         bcm_port_untagged_vlan_set(unit, port, route_vlan);
