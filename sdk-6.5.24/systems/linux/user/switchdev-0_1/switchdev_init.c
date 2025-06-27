@@ -1168,6 +1168,38 @@ int switchdev_field_processor_init(int unit)
     return rv;
 }
 
+int switchdev_vlan_init(int unit)
+{
+    bcm_error_t              rv = BCM_E_NONE;
+    bcm_vlan_control_vlan_t  vlan_control;
+    bcm_port_config_t        port_config;
+    bcm_port_t               port;
+    bcm_vlan_t               route_vlan = 4095;
+
+    bcm_port_config_get(unit, &port_config);    
+    
+    //Create VLAN 4095
+    bcm_vlan_create(route_vlan);
+
+    //Set if_class = 1
+    bcm_vlan_control_vlan_get(unit, route_vlan, &vlan_control);
+    vlan_control.if_class = 1;
+    bcm_vlan_control_vlan_set(unit, route_vlan, vlan_control);
+
+    //Put all ports into VLAN 4095 -untagged (routed port)
+    bcm_vlan_port_add(unit, route_vlan, port_config->port, port_config->port);
+
+    BCM_PBMP_ITER(port_config.port, port) {
+        bcm_port_untagged_vlan_set(unit, port, route_vlan);
+    }
+    //Config VLAN4095 for L3 
+    //  1. create L3 interface
+    //  2. create L3 egress
+
+
+    return rv;
+}
+
 
 int do_per_switch_setup(int unit)
 {
@@ -1215,6 +1247,9 @@ int do_per_switch_setup(int unit)
         BCM_IF_ERROR_RETURN(bcm_port_pause_set(unit, port, pause_tx, pause_rx));
         BCM_IF_ERROR_RETURN(bcm_stat_clear(unit, port));
     }
+
+    //setup vlan
+    switchdev_vlan_init(unit);
 
     //Create KNET interfaces
     knet_portconfig_init(unit);
