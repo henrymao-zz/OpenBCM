@@ -58,7 +58,7 @@
 #endif
 
 #include <opennsa/link.h>
-
+#include <opennsa/l3.h>
 
 #include "switchdev_netlink.h"
 
@@ -291,7 +291,7 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 		//TODO, need to be more accurate
 		if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
 			bcm_l3_host_t_init(&host_info);
-            host_info.l3a_ip_addr = ip_addr;
+            host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
 			host_info.l3a_intf = punt_l3_interface;
 			host_info.l3a_lookup_class = 1;
             bcm_l3_host_add(0, &host_info);

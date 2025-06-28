@@ -34,6 +34,7 @@
 #endif
 
 #include <opennsa/link.h>
+#include <opennsa/l3.h>
 
 //#include <soc/esw/cancun.h>
 /*
@@ -1180,6 +1181,8 @@ int switchdev_vlan_init(int unit)
     bcm_l3_intf_t            l3_intf;
     bcm_l3_egress_t          egress_object;    
 
+    bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
+
     bcm_port_config_get(unit, &port_config);    
     
     //Create VLAN 4095
@@ -1196,20 +1199,20 @@ int switchdev_vlan_init(int unit)
     BCM_PBMP_ITER(port_config.port, port) {
         bcm_port_untagged_vlan_set(unit, port, route_vlan);
     }
+
     //Config VLAN4095 for L3 
     //  1. create L3 interface
     //  2. create L3 egress
-    bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
-
     /* L3 Interface */
     bcm_l3_intf_t_init(&l3_intf);
     memcpy(l3_intf.l3a_mac_addr, system_mac,6);
     l3_intf.l3a_vid = 4095;
     l3_intf.l3a_vrf = 0;
+    l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
     rv = bcm_l3_intf_create(unit, &l3_intf);
     if (BCM_FAILURE(rv)) {
         printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
-        return;
+        return rv;
     }    
 
     /* L3 Egress */
@@ -1222,7 +1225,7 @@ int switchdev_vlan_init(int unit)
     rv = bcm_l3_egress_create(unit, 0, &egress_object, &punt_l3_interface);
     if (BCM_FAILURE(rv)) {
         printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
-        return ;
+        return rv;
     }    
     return rv;
 }
