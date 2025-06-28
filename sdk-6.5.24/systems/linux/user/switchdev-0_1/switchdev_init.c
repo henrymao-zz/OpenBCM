@@ -1310,11 +1310,11 @@ static int switchdev_fp_add_inject_lldp_entry(int unit,
 static int switchdev_fp_add_lookup_lldp_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,                                      
+                                          bcm_mac_t lldp_mac,
+                                          bcm_mac_t lldp_mask,
                                           int statid) 
 {
     bcm_error_t   rv = BCM_E_NONE;
-    bcm_mac_t     lldp_mac = {0x01, 0x80, 0xc2, 0x00, 0x00, 0x00};      
-    bcm_mac_t     lldp_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xf0};   
 
     rv = bcm_field_entry_create_id(unit, group, eid);
     if(BCM_FAILURE(rv)) {
@@ -1375,7 +1375,7 @@ static int switchdev_fp_add_lookup_sysmac_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,   
                                           bcm_mac_t src_mac,
-                                          bcm_mac_t mac_mask,                                                                                    
+                                          bcm_mac_t mac_mask, 
                                           int statid) 
 {
     bcm_error_t   rv = BCM_E_NONE;
@@ -1435,13 +1435,10 @@ static int switchdev_fp_init_lookup(int unit)
     bcm_field_group_config_t group_config;
     bcm_field_entry_t        eid;
     //bcm_vlan_t vlan = 2, vlan_mask = 0xfff;
-    bcm_port_t               port = 0; //port_mask = 0xffffffff;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     bcm_mac_t                cdp_mac = {0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xc0};
     bcm_mac_t                lldp_mac = {0x01, 0x80, 0xc2, 0x00, 0x00, 0x00};      
     bcm_mac_t                lldp_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xf0};       
-    bcm_policer_t            policerId;
-    bcm_policer_config_t     pol_cfg;    
     bcm_field_stat_t         stat_arr[9];
     int                      stat_arr_sz;     
     int                      statid = -1;
@@ -1599,6 +1596,7 @@ static int switchdev_fp_init_lookup(int unit)
             return rv;
     }    
 
+    return rv;
 }
 
 int switchdev_field_processor_init(int unit)
@@ -1669,7 +1667,7 @@ int switchdev_vlan_init(int unit)
 
     /* L3 Egress */
     bcm_l3_egress_t_init(&egress_object);
-    egress_object.intf = 8191;
+    egress_object.intf = l3_intf.l3a_intf_id;
     egress_object.module = 0;
     egress_object.port = 0;
     memcpy(egress_object.mac_addr, system_mac, sizeof(system_mac));
