@@ -303,7 +303,41 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 }
 void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 {
-   printf("switchdev_event_handler_obj_input_deladdr \n");
+    struct nl_addr   *nl_addr;
+    uint32_t          ifindex;
+	struct rtnl_addr *addr;
+	char              ifname[IF_NAMESIZE+1];
+    uint32_t          ipv4_addr;
+    uint8_t           prefixlen;
+	bcm_l3_host_t     host_info;
+
+
+	addr = (struct rtnl_addr *)obj;
+
+	ifindex = rtnl_addr_get_ifindex(addr);
+	if_indextoname(ifindex, ifname);
+    nl_addr = rtnl_addr_get_local(addr);
+
+    if (rtnl_addr_get_family(addr) == AF_INET) {
+        ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        prefixlen = nl_addr_get_prefixlen(nl_addr);
+
+        printf("index %d %s address 0x%x prefix %d\n",
+                ifindex, ifname, ipv4_addr, prefixlen);
+
+		//Create l3table, and bind to l3 egress object
+		//TODO, need to be more accurate
+		if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+			bcm_l3_host_t_init(&host_info);
+            host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
+			host_info.l3a_intf = punt_l3_interface;
+			host_info.l3a_lookup_class = 1;
+            bcm_l3_host_delete(0, &host_info);
+		}
+
+	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
+        printf("IPV6  index %d %s\n",ifindex, ifname);	
+	}
 }
 
 static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
