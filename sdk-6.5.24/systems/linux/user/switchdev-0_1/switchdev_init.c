@@ -849,7 +849,7 @@ static int switchdev_fp_add_lldp_entry(int unit,
 
 
 
-static int switchdev_fp_add_dhcp_entry(int unit,
+static int switchdev_fp_add_dhcp_reply_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,
                                           bcm_mac_t mac_addr,
@@ -877,11 +877,17 @@ static int switchdev_fp_add_dhcp_entry(int unit,
         printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
         return rv;
     }    
-    rv = bcm_field_qualify_Dhcp(unit, eid, 0x0, 0x0);
+
+    rv = bcm_field_qualify_L4DstPort(unit, eid, 0x44, 0xffff);
     if(BCM_FAILURE(rv)) {
-        printf("\nError in bcm_field_qualify_Dhcp() : %s\n", bcm_errmsg(rv));
+        printf("\nError in bcm_field_qualify_L4DstPort() : %s\n", bcm_errmsg(rv));
         return rv;
-    }        
+    }    
+    rv = bcm_field_qualify_L4SrcPort(unit, eid, 0x43, 0xffff);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_L4SrcPort() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }      
 
     //Remove CPU 
     BCM_PBMP_CLEAR(pbm_mask);
@@ -1309,7 +1315,7 @@ static int switchdev_fp_init_ingress(int unit)
 
     // EID 0x20, DHCP sysmac
     eid = 0x20;
-    rv = switchdev_fp_add_dhcp_entry(unit, 
+    rv = switchdev_fp_add_dhcp_reply_entry(unit, 
                                     group_config.group, 
                                     eid, 
                                     system_mac,
@@ -1321,20 +1327,8 @@ static int switchdev_fp_init_ingress(int unit)
                     eid, unit,  bcm_errmsg (rv), rv);
             return rv;
     }   
-    // EID 0x21, DHCP broadcast
-    eid = 0x21;
-    rv = switchdev_fp_add_dhcp_entry(unit, 
-                                    group_config.group, 
-                                    eid, 
-                                    mac_mask,
-                                    mac_mask, 
-                                    policerId,
-                                    statid);
-    if (rv != BCM_E_NONE) {
-            printf("Failed to create DHCP entry %d unit: %d, Error:%s (%d)\r\n",
-                    eid, unit,  bcm_errmsg (rv), rv);
-            return rv;
-    }          
+
+    
     return rv;
 }
 
