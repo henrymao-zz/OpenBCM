@@ -1667,7 +1667,8 @@ int switchdev_vlan_init(int unit)
 
     /* L3 Egress */
     bcm_l3_egress_t_init(&egress_object);
-    egress_object.intf = l3_intf.l3a_intf_id;
+    //egress_object.intf = l3_intf.l3a_intf_id;
+    egress_object.intf = 8191;
     egress_object.module = 0;
     egress_object.port = 0;
     memcpy(egress_object.mac_addr, system_mac, sizeof(system_mac));
