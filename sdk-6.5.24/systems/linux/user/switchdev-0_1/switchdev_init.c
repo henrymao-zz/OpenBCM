@@ -847,6 +847,105 @@ static int switchdev_fp_add_lldp_entry(int unit,
     return rv;
 }
 
+
+
+static int switchdev_fp_add_dhcp_entry(int unit,
+                                          bcm_field_group_t group,
+                                          bcm_field_entry_t eid,
+                                          bcm_mac_t mac_addr,
+                                          bcm_mac_t mac_mask,                                          
+                                          bcm_policer_t policerId,
+                                          int statid) 
+{
+    bcm_error_t   rv = BCM_E_NONE;
+    bcm_pbmp_t    pbm, pbm_mask;     
+
+    rv = bcm_field_entry_create_id(unit, group, eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_create() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_entry_prio_set(unit, eid, 0x4);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_prio_set() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_DstMac(unit, eid, mac_addr, mac_mask);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+    rv = bcm_field_qualify_Dhcp(unit, eid, 0x0, 0x0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_Dhcp() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }        
+
+    //Remove CPU 
+    BCM_PBMP_CLEAR(pbm_mask);
+    BCM_PBMP_CLEAR(pbm);
+    BCM_PBMP_PORT_SET(pbm_mask, 0);
+    rv = bcm_field_qualify_InPorts(unit, eid, pbm, pbm_mask);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_InPorts() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+
+    /* FP entry actions configuration */
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionCosQCpuNew, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionPrioIntNew, 0x7, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionGpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionYpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* attach policer and stats*/
+    rv = bcm_field_entry_policer_attach(unit, eid, 0, policerId);
+    if (rv != BCM_E_NONE) {
+        printf("Failed to attach policer for unit: %d, entry %d Error:%s (%d)\r\n",
+                unit, eid,  bcm_errmsg (rv), rv);
+        return rv;
+    }
+
+    rv = bcm_field_entry_stat_attach(unit, eid, statid);
+    if (rv != BCM_E_NONE) {
+        printf("Failed to attach stat for unit: %d, entry %d Error:%s (%d)\r\n",
+                unit, eid,  bcm_errmsg (rv), rv);
+        return rv;
+    }
+    /* install and enable entry*/
+    rv = bcm_field_entry_install(unit, eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_install() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    rv = bcm_field_entry_enable_set(unit, eid, 1);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_enable_set() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    return rv;
+}
+
 static int switchdev_fp_init_ingress(int unit)
 {
     bcm_error_t              rv = BCM_E_NONE;
@@ -1166,6 +1265,76 @@ static int switchdev_fp_init_ingress(int unit)
                     eid, unit,  bcm_errmsg (rv), rv);
             return rv;
     }    
+
+    /*************************************************************************************/
+    /* DHCP                                                                              */
+    /*************************************************************************************/ 
+   //Create Policer for LLDP request/reply
+    bcm_policer_config_t_init(&pol_cfg);
+
+    pol_cfg.ckbits_sec = 600;
+    pol_cfg.ckbits_burst = 0;
+    pol_cfg.pkbits_sec = 600;
+    pol_cfg.pkbits_burst = 0;
+    pol_cfg.mode = bcmPolicerModeSrTcm;
+    pol_cfg.flags |= BCM_POLICER_MODE_PACKETS;
+        
+    pol_cfg.action_id = 0;
+        
+    rv = bcm_policer_create(unit, &pol_cfg, &policerId);
+    if (rv != BCM_E_NONE) {
+            printf("Failed to create policer for ARP unit: %d, Error:%s (%d)\r\n",
+                unit,  bcm_errmsg (rv), rv);
+            return rv;
+    }
+        
+
+    //Create Stats for LLDP reuest/reply
+    stat_arr[0] = bcmFieldStatBytes;
+    stat_arr[1] = bcmFieldStatPackets;
+    stat_arr[2] = bcmFieldStatGreenBytes;
+    stat_arr[3] = bcmFieldStatGreenPackets;
+    stat_arr[4] = bcmFieldStatYellowBytes;
+    stat_arr[5] = bcmFieldStatYellowPackets;
+    stat_arr[6] = bcmFieldStatRedBytes;
+    stat_arr[7] = bcmFieldStatRedPackets;
+    stat_arr_sz = 8;
+
+    rv = bcm_field_stat_create(unit, group_config.group, stat_arr_sz, stat_arr, &statid);
+    if (rv != BCM_E_NONE) {
+            printf("Failed to create stat for ARP unit: %d, Error:%s (%d)\r\n",
+                unit,  bcm_errmsg (rv), rv);
+            return rv;
+    }
+
+    // EID 0x20, DHCP sysmac
+    eid = 0x20;
+    rv = switchdev_fp_add_dhcp_entry(unit, 
+                                    group_config.group, 
+                                    eid, 
+                                    system_mac,
+                                    mac_mask, 
+                                    policerId,
+                                    statid);
+    if (rv != BCM_E_NONE) {
+            printf("Failed to create DHCP entry %d unit: %d, Error:%s (%d)\r\n",
+                    eid, unit,  bcm_errmsg (rv), rv);
+            return rv;
+    }   
+    // EID 0x21, DHCP broadcast
+    eid = 0x21;
+    rv = switchdev_fp_add_dhcp_entry(unit, 
+                                    group_config.group, 
+                                    eid, 
+                                    mac_mask,
+                                    mac_mask, 
+                                    policerId,
+                                    statid);
+    if (rv != BCM_E_NONE) {
+            printf("Failed to create DHCP entry %d unit: %d, Error:%s (%d)\r\n",
+                    eid, unit,  bcm_errmsg (rv), rv);
+            return rv;
+    }          
     return rv;
 }
 
