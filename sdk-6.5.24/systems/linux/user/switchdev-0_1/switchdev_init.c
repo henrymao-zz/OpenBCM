@@ -28,6 +28,7 @@
  */
 #include <bcm/port.h>
 #include <bcm/stg.h>
+#include <bcm/l2.h>
 
 #if defined(BCM_LTSW_SUPPORT)
 #include <appl/diag/sysconf_ltsw.h>
@@ -1794,8 +1795,16 @@ int switchdev_vlan_init(int unit)
     bcm_l3_intf_t            l3_intf;
     bcm_l3_egress_t          egress_object;    
     bcm_if_t                 ingress_if_egr;
+    bcm_l3_ingress_t         l3_ingress;
+    int                      station_id;
+    bcm_l2_station_t         l2_station;
+    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
     bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
+    bcm_switch_control_set(unit, bcmSwitchL3IngressMode, 1);
+    bcm_switch_control_set(unit, bcmSwitchIpmcSameVlanL3Route, 1);
+    bcm_switch_control_set(unit, bcmSwitchL3IngressInterfaceMapSet, 1);
+    bcm_switch_control_set(unit, bcmSwitchL2DstHitEnable, 0);
 
     bcm_port_config_get(unit, &port_config);    
     
@@ -1816,6 +1825,21 @@ int switchdev_vlan_init(int unit)
 
     //Create L3 Intf for ports
     BCM_PBMP_ITER(port_config.port, port) {
+        /* L2 station */
+        bcm_l2_station_t_init(&l2_station);
+        memcpy(l2_station.dst_mac, system_mac, 6);
+        memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+        l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+        l2_station.vlan         = 4095;
+        l2_station.vlan_mask    = 0xfff;
+        l2_station.src_port     = port;
+        l2_station.src_port_mask = 0x00ff;
+
+        rv = bcm_l2_station_add(unit, &station_id, &l2_station);
+	    if (BCM_E_NONE != rv) {
+	    		printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
+	    		return rv;
+	    }
         /* L3 Interface */
         bcm_l3_intf_t_init(&l3_intf);
         memcpy(l3_intf.l3a_mac_addr, system_mac,6);
