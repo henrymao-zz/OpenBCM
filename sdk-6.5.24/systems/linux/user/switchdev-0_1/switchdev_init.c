@@ -1799,6 +1799,7 @@ int switchdev_vlan_init(int unit)
     int                      station_id;
     bcm_l2_station_t         l2_station;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    bcm_vlan_block_t         vlan_block;
 
     bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
     bcm_switch_control_set(unit, bcmSwitchL3IngressMode, 1);
@@ -1815,6 +1816,13 @@ int switchdev_vlan_init(int unit)
     bcm_vlan_control_vlan_get(unit, route_vlan, &vlan_control);
     vlan_control.if_class = 1;
     bcm_vlan_control_vlan_set(unit, route_vlan, vlan_control);
+
+    //set vlan block
+    bcm_vlan_block_t_init(&vlan_block);
+    vlan_block.unknown_multicast = port_config.all; 
+    vlan_block.unknown_unicast   = port_config.all; 
+    vlan_block.broadcast         = port_config.all;    
+    bcm_vlan_block_set(unit, route_vlan, &vlan_block);
 
     //Put all ports into VLAN 4095 -untagged (routed port)
     bcm_vlan_port_add(unit, route_vlan, port_config.port, port_config.port);
