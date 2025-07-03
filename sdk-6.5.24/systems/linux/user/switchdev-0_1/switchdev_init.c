@@ -1793,6 +1793,7 @@ int switchdev_vlan_init(int unit)
     bcm_vlan_t               route_vlan = 4095;
     bcm_l3_intf_t            l3_intf;
     bcm_l3_egress_t          egress_object;    
+    bcm_if_t                 ingress_if_egr;
 
     bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
 
@@ -1813,22 +1814,47 @@ int switchdev_vlan_init(int unit)
         bcm_port_untagged_vlan_set(unit, port, route_vlan);
     }
 
-    //Config VLAN4095 for L3 
-    //  1. create L3 interface
-    //  2. create L3 egress
-    /* L3 Interface */
-    bcm_l3_intf_t_init(&l3_intf);
-    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
-    l3_intf.l3a_vid = 4095;
-    l3_intf.l3a_vrf = 0;
-    l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
-    rv = bcm_l3_intf_create(unit, &l3_intf);
-    if (BCM_FAILURE(rv)) {
-        printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
-        return rv;
-    }    
+    //Create L3 Intf for ports
+    BCM_PBMP_ITER(port_config.port, port) {
+        /* L3 Interface */
+        bcm_l3_intf_t_init(&l3_intf);
+        memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+        l3_intf.l3a_vid = 4095;
+        l3_intf.l3a_vrf = 0;
+        //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+        rv = bcm_l3_intf_create(unit, &l3_intf);
+        if (BCM_FAILURE(rv)) {
+           printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
+           return rv;
+        }
+        
+        /*
+         * Use the same ID to allocate the ingress interface (L3_IIF)
+         * (This is really not needed for L3MPLS init, since we only need
+         *  to use EGR_L3_INTF to create the tunnel)
+         */
+        ingress_if_egr = l3_intf.l3a_intf_id;
 
-    /* L3 Egress */
+        bcm_l3_ingress_t_init(&l3_ingress);
+        l3_ingress.flags = BCM_L3_INGRESS_REPLACE;
+        l3_ingress.vrf  = 0;
+        l3_ingress.ipmc_intf_id  = ingress_if_egr;
+        rv = bcm_l3_ingress_create(unit, &l3_ingress, &ingress_if_egr);
+        if (BCM_FAILURE(rv)) {
+           printf("Perf: Create L3 ingress intf failed: %s\n", bcm_errmsg(rv));
+           return rv;
+        }
+
+        /* set port.l3_iif to ingress_if_egr */
+        rv = bcm_port_control_set(unit, port, bcmPortControlL3Ingress, ingress_if_egr);
+        if (BCM_FAILURE(rv)) {
+           printf("Perf: bcmPortControlL3Ingress failed: %s\n", bcm_errmsg(rv));
+           return rv;
+        }
+    }
+
+
+    /* L3 Egress - to host CPU*/
     bcm_l3_egress_t_init(&egress_object);
     //egress_object.intf = l3_intf.l3a_intf_id;
     egress_object.intf = 8191;
