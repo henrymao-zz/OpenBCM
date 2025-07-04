@@ -1800,6 +1800,7 @@ int switchdev_vlan_init(int unit)
     bcm_l2_station_t         l2_station;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     bcm_vlan_block_t         vlan_block;
+    bcm_if_t                 host_l3_interface;
 
     bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
     bcm_switch_control_set(unit, bcmSwitchL3IngressMode, 1);
@@ -1830,6 +1831,48 @@ int switchdev_vlan_init(int unit)
     BCM_PBMP_ITER(port_config.port, port) {
         bcm_port_untagged_vlan_set(unit, port, route_vlan);
     }
+
+    //Create L3 for Vlan 1
+    bcm_l2_station_t_init(&l2_station);
+    memcpy(l2_station.dst_mac, system_mac, 6);
+    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+    l2_station.vlan         = 0;
+    l2_station.vlan_mask    = 0;
+    l2_station.src_port     = 0;
+    l2_station.src_port_mask = 0;
+
+    rv = bcm_l2_station_add(unit, &station_id, &l2_station);
+	if (BCM_E_NONE != rv) {
+			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
+			return rv;
+	}
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+    l3_intf.l3a_vid = 1;
+    l3_intf.l3a_vrf = 0;
+    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+    rv = bcm_l3_intf_create(unit, &l3_intf);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+     /* L3 Egress - to host CPU*/
+    bcm_l3_egress_t_init(&egress_object);
+    egress_object.intf = l3_intf.l3a_intf_id;
+    egress_object.module = 0;
+    egress_object.port = 0;
+    egress_object.vlan = 1;
+    memcpy(egress_object.mac_addr, system_mac, sizeof(system_mac));
+
+    rv = bcm_l3_egress_create(unit, 0, &egress_object, &host_l3_interface);
+    if (BCM_FAILURE(rv)) {
+        printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+   
 
     //Create L3 Intf for ports
     BCM_PBMP_ITER(port_config.port, port) {
@@ -1899,6 +1942,9 @@ int switchdev_vlan_init(int unit)
         printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
         return rv;
     }    
+
+
+
     return rv;
 }
 
@@ -1948,11 +1994,19 @@ int do_per_switch_setup(int unit)
         }
 
         //disable ARL for routed ports
-        BCM_IF_ERROR_RETURN(bcm_port_learn_set(unit, port, BCM_PORT_LEARN_FWD));
+        //BCM_IF_ERROR_RETURN(bcm_port_learn_set(unit, port, BCM_PORT_LEARN_FWD));
+        bcm_port_control_set(unit, port, bcmPortControlL2Learn, BCM_PORT_LEARN_FWD);
+        bcm_port_control_set(unit, port, bcmPortControlL2Move, BCM_PORT_LEARN_FWD);
 
         BCM_IF_ERROR_RETURN(bcm_port_pause_set(unit, port, pause_tx, pause_rx));
         BCM_IF_ERROR_RETURN(bcm_stat_clear(unit, port));
     }
+
+    /* setup cpu port*/
+    bcm_port_control_set(unit, 0, bcmPortControlL2Learn, BCM_PORT_LEARN_FWD);
+    bcm_port_control_set(unit, 0, bcmPortControlL2Move, BCM_PORT_LEARN_FWD);
+    bcm_port_control_set(unit, 0, bcmPortControlIP4, TRUE);
+    bcm_port_control_set(unit, 0, bcmPortControlForwardStaticL2MovePkt, TRUE);
 
     //setup vlan
     switchdev_vlan_init(unit);
