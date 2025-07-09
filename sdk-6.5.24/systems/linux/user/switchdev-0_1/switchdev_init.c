@@ -751,6 +751,119 @@ static int switchdev_fp_add_arp_entry(int unit,
 }
 
 
+static int switchdev_fp_add_icmpv6_entry(int unit,
+                                          bcm_field_group_t group,
+                                          bcm_field_entry_t eid,
+                                          bcm_policer_t policerId,
+                                          int statid) 
+{
+    bcm_error_t   rv = BCM_E_NONE;
+    bcm_pbmp_t    pbm, pbm_mask;     
+
+    rv = bcm_field_entry_create_id(unit, group, eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_create() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_entry_prio_set(unit, eid, 0x4);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_prio_set() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    //Remove CPU 
+    BCM_PBMP_CLEAR(pbm_mask);
+    BCM_PBMP_CLEAR(pbm);
+    BCM_PBMP_PORT_SET(pbm_mask, 0);
+    rv = bcm_field_qualify_InPorts(unit, eid, pbm, pbm_mask);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_InPorts() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    rv = bcm_field_qualify_RangeCheck(unit, eid, 0x1, 0x1);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_Ttl() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_EtherType(unit, eid, 0x000086dd, 0x0000ffff);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_EtherType() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_IpProtocol(unit, eid, 0x0000003a, 0x000000ff);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_IpProtocol() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_Ttl(unit, eid, 0x000000ff, 0x000000ff);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_Ttl() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    rv = bcm_field_qualify_InterfaceClassL2(unit, eid, 0x1, 0x1);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_MyStationHit() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    /* FP entry actions configuration */
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionCosQCpuNew, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionPrioIntNew, 0x7, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionGpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+    rv = bcm_field_action_add(unit, eid, bcmFieldActionYpCopyToCpu, 0, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_action_add() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }
+
+    /* attach policer and stats*/
+    rv = bcm_field_entry_policer_attach(unit, eid, 0, policerId);
+    if (rv != BCM_E_NONE) {
+        printf("Failed to attach policer for unit: %d, entry %d Error:%s (%d)\r\n",
+                unit, eid,  bcm_errmsg (rv), rv);
+        return rv;
+    }
+
+    rv = bcm_field_entry_stat_attach(unit, eid, statid);
+    if (rv != BCM_E_NONE) {
+        printf("Failed to attach stat for unit: %d, entry %d Error:%s (%d)\r\n",
+                unit, eid,  bcm_errmsg (rv), rv);
+        return rv;
+    }
+    /* install and enable entry*/
+    rv = bcm_field_entry_install(unit, eid);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_install() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    rv = bcm_field_entry_enable_set(unit, eid, 1);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_entry_enable_set() : %s\n", bcm_errmsg(rv));
+        return rv;
+    }    
+
+    return rv;
+}
+
 static int switchdev_fp_add_lldp_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,
@@ -1169,7 +1282,18 @@ static int switchdev_fp_init_ingress(int unit)
                     eid, unit,  bcm_errmsg (rv), rv);
             return rv;
     }
-
+    // EID 0x15, IPV6 ICMP
+    eid = 0x15;
+    rv = switchdev_fp_add_icmpv6_entry(unit, 
+                                    group_config.group, 
+                                    eid, 
+                                    policerId,
+                                    statid);
+    if (rv != BCM_E_NONE) {
+            printf("Failed to create ARP Reply entry %d unit: %d, Error:%s (%d)\r\n",
+                    eid, unit,  bcm_errmsg (rv), rv);
+            return rv;
+    }
     /*************************************************************************************/
     /* LLDP                                                                              */
     /*************************************************************************************/ 
