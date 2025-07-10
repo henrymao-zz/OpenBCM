@@ -479,7 +479,7 @@ $(DEST_DIR)/libopennsa.a: $(BCM) $(DEST_DIR)
 $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
 
-$(DEST_DIR)/libbcm.so: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
+$(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
 	$(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
 	-lopennsa $(shell pkg-config --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) -o $@
