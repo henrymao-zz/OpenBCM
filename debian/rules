@@ -63,7 +63,7 @@ kdist_config: prep-deb-files
 kdist_clean: clean
 	dh_testdir
 	dh_clean
-	SDK=$(realpath .) \
+	SDK=$(realpath $(SDK_PATH)) \
 	    KERNDIR=/usr/src/linux-headers-$(KERNVERSION)-sonic \
 	    $(MAKE) -C $(SDK_PATH)/systems/linux/user/switchdev clean
 #	rm -f driver/*.o driver/*.ko
@@ -84,7 +84,7 @@ build-arch-stamp:
 
 	# create links
 	# Add here command to compile/build the package.
-	SDK=$(realpath .) \
+	SDK=$(realpath $(SDK_PATH)) \
 	    KERNDIR=/usr/src/linux-headers-$(KERNVERSION)-sonic \
 	    $(MAKE) -j4 -C $(SDK_PATH)/systems/linux/user/switchdev
 
@@ -111,7 +111,7 @@ clean:
 	rm -f build-arch-stamp build-indep-stamp configure-stamp
 
 	# Add here commands to clean up after the build process.
-	SDK=$(realpath .) \
+	SDK=$(realpath $(SDK_PATH)) \
 	    KERNDIR=/usr/src/linux-headers-$(KERNVERSION)-sonic \
 	    $(MAKE) -C $(SDK_PATH)/systems/linux/user/switchdev clean
 
