@@ -1,0 +1,12 @@
+Source: switchdev 
+Section: main
+Priority: extra
+Maintainer: Henry Mao
+Build-Depends: debhelper (>= 8.0.0), bzip2
+Standards-Version: 3.9.3
+
+Package: switchdev-modules
+Architecture: amd64
+Section: main
+Depends: linux-image-unsigned-6.8.0-1000-sonic
+Description: kernel modules and userspace daemon for broadcom switchdev
