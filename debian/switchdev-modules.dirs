@@ -1,1 +1,4 @@
 lib/modules/6.8.0-1000-sonic/extra
+rc/flex
+etc/broadcom
+usr/local/bin

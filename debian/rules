@@ -16,8 +16,6 @@
 #export DH_VERBOSE=1
 
 
-.ONESHELL:
-
 # some default definitions, important!
 #
 # Name of the source package
@@ -65,10 +63,9 @@ kdist_config: prep-deb-files
 kdist_clean: clean
 	dh_testdir
 	dh_clean
-	cd $(SDK_PATH)
 	SDK=$(realpath .) \
 	    KERNDIR=/usr/src/linux-headers-$(KERNVERSION)-sonic \
-	    $(MAKE) -C systems/linux/user/switchdev clean
+	    $(MAKE) -C $(SDK_PATH)/systems/linux/user/switchdev clean
 #	rm -f driver/*.o driver/*.ko
 #
 ### end  KERNEL SETUP
@@ -89,7 +86,7 @@ build-arch-stamp:
 	# Add here command to compile/build the package.
 	SDK=$(realpath .) \
 	    KERNDIR=/usr/src/linux-headers-$(KERNVERSION)-sonic \
-	    $(MAKE) -C systems/linux/user/switchdev
+	    $(MAKE) -j4 -C $(SDK_PATH)/systems/linux/user/switchdev
 
 	touch $@
 
@@ -115,8 +112,8 @@ clean:
 
 	# Add here commands to clean up after the build process.
 	SDK=$(realpath .) \
-	    KERNDIR=/usr/src/linux-sonic-headers-$(KERNVERSION) \
-	    $(MAKE) -C systems/linux/user/switchdev clean
+	    KERNDIR=/usr/src/linux-headers-$(KERNVERSION)-sonic \
+	    $(MAKE) -C $(SDK_PATH)/systems/linux/user/switchdev clean
 
 	dh_clean
 

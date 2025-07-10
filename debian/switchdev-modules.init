@@ -124,7 +124,7 @@ force-reload|restart)
     ;;
 
 *)
-    echo "Usage: /etc/init.d/opennsl-modules.init {start|stop}"
+    echo "Usage: /etc/init.d/switchdev-modules.init {start|stop}"
     exit 1
     ;;
 esac
