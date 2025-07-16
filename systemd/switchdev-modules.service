@@ -4,8 +4,8 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=-/etc/init.d/opennsl-modules start
-ExecStop=-/etc/init.d/opennsl-modules stop
+ExecStart=-/etc/init.d/switchdev-modules start
+ExecStop=-/etc/init.d/switchdev-modules stop
 RemainAfterExit=yes
 
 [Install]

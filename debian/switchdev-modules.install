@@ -1,7 +1,7 @@
-sdk-6.5.24/systems/linux/user/switchdev/linux-bcm-knet.ko lib/modules/6.8.0-1000-sonic/extra
-sdk-6.5.24/systems/linux/user/switchdev/linux-kernel-bde.ko lib/modules/6.8.0-1000-sonic/extra
-sdk-6.5.24/systems/linux/user/switchdev/linux-user-bde.ko lib/modules/6.8.0-1000-sonic/extra
+sdk-6.5.24/build/linux/user/switchdev/linux-bcm-knet.ko lib/modules/6.8.0-1000-sonic/extra
+sdk-6.5.24/build/linux/user/switchdev/linux-kernel-bde.ko lib/modules/6.8.0-1000-sonic/extra
+sdk-6.5.24/build/linux/user/switchdev/linux-user-bde.ko lib/modules/6.8.0-1000-sonic/extra
 sdk-6.5.24/build/linux/user/switchdev/switchdev_init.user usr/local/bin
-sdk-6.5.24/rc/cmicfw/  rc/flex
-sdk-6.5.24/rc/n3248te/config.bcm etc/broadcom
+sdk-6.5.24/rc/cmicfw/  rc/cmicfw
+sdk-6.5.24/rc/flex/    rc/flex
 systemd/switchdev-modules.service lib/systemd/system
