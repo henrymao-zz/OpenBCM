@@ -2,6 +2,7 @@ sdk-6.5.24/build/linux/user/switchdev/linux-bcm-knet.ko lib/modules/6.8.0-1000-s
 sdk-6.5.24/build/linux/user/switchdev/linux-kernel-bde.ko lib/modules/6.8.0-1000-sonic/extra
 sdk-6.5.24/build/linux/user/switchdev/linux-user-bde.ko lib/modules/6.8.0-1000-sonic/extra
 sdk-6.5.24/build/linux/user/switchdev/switchdev_init.user usr/local/bin
-sdk-6.5.24/rc/cmicfw/  rc/cmicfw
-sdk-6.5.24/rc/flex/    rc/flex
+sdk-6.5.24/rc/cmicfw/  rc/
+sdk-6.5.24/rc/flex/    rc/
+scripts/bcmsh  usr/bin
 systemd/switchdev-modules.service lib/systemd/system
