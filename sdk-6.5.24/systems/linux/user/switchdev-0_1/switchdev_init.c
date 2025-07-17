@@ -488,7 +488,7 @@ int knet_portconfig_init(int unit)
     int rv;
 
     /* open file, allocate buffer and read file into buffer */
-    fp = sal_fopen("port_config.ini", "rb");
+    fp = sal_fopen("/etc/bcm/port_config.ini", "rb");
   
     if (!fp) {
        printf("port_config.ini open failed \n");
@@ -2261,6 +2261,8 @@ int main( int argc, char *argv[] )
     }
 #endif
 #endif
+
+    sal_config_file_set("/etc/bcm/config.bcm", "/etc/bcm/config.tmp");
 
     if (sal_core_init() < 0
 #ifndef NO_SAL_APPL
