@@ -269,7 +269,7 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
     uint32_t          ifindex;
 	struct rtnl_addr *addr;
 	char              ifname[IF_NAMESIZE+1];
-    uint32_t          ipv4_addr;
+    uint32_t          ipv4_addr, *ipv6_addr;
     uint8_t           prefixlen;
 	bcm_l3_host_t     host_info;
 
@@ -284,7 +284,7 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
         ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("index %d %s address 0x%x prefix %d\n",
+        printf("add index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
 		//Create l3table, and bind to l3 egress object
@@ -298,7 +298,20 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 		}
 
 	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
-        printf("IPV6  index %d %s\n",ifindex, ifname);	
+        ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        prefixlen = nl_addr_get_prefixlen(nl_addr);
+
+        printf("add index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+                ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
+
+        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+            bcm_l3_host_t_init(&host_info);
+            host_info.l3a_flags =  BCM_L3_IP6;
+            host_info.l3a_intf = punt_l3_interface; 
+            host_info.l3a_lookup_class = 1;
+            memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
+            bcm_l3_host_add(0, &host_info);
+        }
 	}
 }
 void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
@@ -307,7 +320,7 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
     uint32_t          ifindex;
 	struct rtnl_addr *addr;
 	char              ifname[IF_NAMESIZE+1];
-    uint32_t          ipv4_addr;
+    uint32_t          ipv4_addr, *ipv6_addr;
     uint8_t           prefixlen;
 	bcm_l3_host_t     host_info;
 
@@ -322,10 +335,9 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
         ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("index %d %s address 0x%x prefix %d\n",
+        printf("del index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
-		//Create l3table, and bind to l3 egress object
 		//TODO, need to be more accurate
 		if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
 			bcm_l3_host_t_init(&host_info);
@@ -336,7 +348,21 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 		}
 
 	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
-        printf("IPV6  index %d %s\n",ifindex, ifname);	
+        ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        prefixlen = nl_addr_get_prefixlen(nl_addr);
+
+        printf("del index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+                ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
+
+        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+            bcm_l3_host_t_init(&host_info);
+            host_info.l3a_flags =  BCM_L3_IP6;
+            host_info.l3a_intf = punt_l3_interface; 
+            host_info.l3a_lookup_class = 1;
+            memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
+            bcm_l3_host_delete(0, &host_info);
+        }
+	
 	}
 }
 
@@ -612,7 +638,14 @@ int switchdev_netlink_main(void)
     ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
     if (ret < 0)
     {
-        printf("Failed to add netlink membership.");
+        printf("Failed to add netlink ipv4 membership.");
+        goto out;
+    }
+
+    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV6_IFADDR);
+    if (ret < 0)
+    {
+        printf("Failed to add netlink ipv6 membership.");
         goto out;
     }
 

@@ -36,6 +36,7 @@
 
 #include <opennsa/link.h>
 #include <opennsa/l3.h>
+#include <opennsa/range.h>
 
 //#include <soc/esw/cancun.h>
 /*
@@ -757,8 +758,10 @@ static int switchdev_fp_add_icmpv6_entry(int unit,
                                           bcm_policer_t policerId,
                                           int statid) 
 {
-    bcm_error_t   rv = BCM_E_NONE;
-    bcm_pbmp_t    pbm, pbm_mask;     
+    bcm_error_t         rv = BCM_E_NONE;
+    bcm_pbmp_t          pbm, pbm_mask;
+    bcm_port_config_t   port_config;
+    bcm_range_config_t  range_config;
 
     rv = bcm_field_entry_create_id(unit, group, eid);
     if(BCM_FAILURE(rv)) {
@@ -782,9 +785,28 @@ static int switchdev_fp_add_icmpv6_entry(int unit,
         return rv;
     }    
 
-    rv = bcm_field_qualify_RangeCheck(unit, eid, 0x1, 0x1);
+    /* Range Check Configuration and Creation */
+    bcm_switch_control_set(unit,bcmSwitchRangeCheckersAPIType, 1);
+    /* Setting the Operational mode to PipeGlobal Mode */
+    bcm_range_oper_mode_set(unit, bcmRangeOperModeGlobal);
+
+    bcm_port_config_get(unit, &port_config);
+
+    bcm_range_config_t_init(&range_config);
+    range_config.rtype = bcmRangeTypeL4SrcPort;
+    range_config.rid = 1;
+    range_config.min = 0x8500;
+    range_config.max = 0x8900;
+    range_config.ports = port_config.all;    // bcmRangeOperModeGlobal
+
+    rv = bcm_range_create(unit, BCM_RANGE_CREATE_WITH_ID, &range_config);
     if(BCM_FAILURE(rv)) {
-        printf("\nError in bcm_field_qualify_Ttl() : %s\n", bcm_errmsg(rv));
+        printf("\nError in bcm_range_create : %s\n", bcm_errmsg(rv));
+    }
+
+    rv = bcm_field_qualify_RangeCheck(unit, eid, range_config.rid, 0);
+    if(BCM_FAILURE(rv)) {
+        printf("\nError in bcm_field_qualify_RangeCheck() : %s\n", bcm_errmsg(rv));
         return rv;
     }
 
