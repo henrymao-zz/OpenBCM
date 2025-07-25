@@ -366,6 +366,78 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 	}
 }
 
+
+static int switchdv_handle_neigh_request(struct nlmsghdr *n)
+{
+    struct ndmsg  *ndm = NLMSG_DATA(n);
+    struct rtattr *tb[NDA_MAX + 1] = {{0}};	
+    int        len = n->nlmsg_len;
+    int        is_del = 0;
+    int        msgtype = n->nlmsg_type;
+	uint8_t    mac_addr[6];
+    uint32_t   ipv4_addr;
+
+
+    if (n->nlmsg_type == NLMSG_DONE)
+    {
+        return 0;
+    }
+
+    /* process msg_type RTM_NEWNEIGH, RTM_GETNEIGH, RTM_DELNEIGH */
+    if (n->nlmsg_type != RTM_NEWNEIGH && n->nlmsg_type  != RTM_DELNEIGH )
+        return(0);
+
+    ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
+
+    if (ndm->ndm_state == NUD_INCOMPLETE
+        || ndm->ndm_state == NUD_FAILED
+        || ndm->ndm_state == NUD_NOARP
+        || ndm->ndm_state == NUD_PERMANENT
+        || ndm->ndm_state == NUD_NONE)
+    {
+        if ((ndm->ndm_state == NUD_FAILED)
+                || (ndm->ndm_state == NUD_INCOMPLETE))
+        {
+            is_del = 1;
+            msgtype = RTM_DELNEIGH;
+        }
+
+        if (!is_del) {
+            return(0);
+        }
+    }
+
+    if (!tb[NDA_DST] || ndm->ndm_type != RTN_UNICAST)
+    {
+        return(0);
+    }
+
+	memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
+
+	if (!is_del && tb[NDA_LLADDR]) {
+        memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+	}
+
+	if (is_del) {
+	    printf("handle neigh del if_index %d ip_addr 0x%x\n", ndm->ndm_ifindex, ipv4_addr);
+	} else {
+       printf("handle neigh add if_index %d ip_addr 0x%x\n mac %x:%x:%x:%x:%x:%x ",
+		      ndm->ndm_ifindex, ipv4_addr, mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);
+	}
+    if (ndm->ndm_family == AF_INET)
+    {
+        //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
+
+    }
+
+    if (ndm->ndm_family == AF_INET6)
+    {
+        //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
+    }
+
+    return (0);
+}
+
 static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 {
     struct nlmsghdr *nlh = nlmsg_hdr(msg);
@@ -384,6 +456,7 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
         case RTM_NEWNEIGH:
         case RTM_DELNEIGH:
+		    switchdv_handle_neigh_request(nlh);
             break;
 
         case RTM_NEWADDR:
