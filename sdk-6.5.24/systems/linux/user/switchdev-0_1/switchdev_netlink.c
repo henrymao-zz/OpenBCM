@@ -366,15 +366,29 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 	}
 }
 
+#ifndef NDA_RTA
+#define NDA_RTA(r) \
+    ((struct rtattr*)(((char*)(r)) + NLMSG_ALIGN(sizeof(struct ndmsg))))
+#endif
+
+void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
+{
+    while (RTA_OK(rta, len))
+    {
+        if (rta->rta_type <= max)
+            tb[rta->rta_type] = rta;
+        rta = RTA_NEXT(rta, len);
+    }
+}
 
 static int switchdv_handle_neigh_request(struct nlmsghdr *n)
 {
     struct ndmsg  *ndm = NLMSG_DATA(n);
-    struct rtattr *tb[NDA_MAX + 1] = {{0}};	
+    struct rtattr *tb[NDA_MAX + 1] = {0};	
     int        len = n->nlmsg_len;
     int        is_del = 0;
     int        msgtype = n->nlmsg_type;
-	uint8_t    mac_addr[6];
+    uint8_t    mac_addr[6];
     uint32_t   ipv4_addr;
 
 
@@ -412,18 +426,15 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
         return(0);
     }
 
-	memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
+    memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
+    
+    if (!is_del && tb[NDA_LLADDR]) {
+    memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+    }
+    
+    printf("handle neigh msg %d if_index %d ip_addr 0x%x\n mac %x:%x:%x:%x:%x:%x ",
+           msgtype, ndm->ndm_ifindex, ipv4_addr, mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);
 
-	if (!is_del && tb[NDA_LLADDR]) {
-        memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
-	}
-
-	if (is_del) {
-	    printf("handle neigh del if_index %d ip_addr 0x%x\n", ndm->ndm_ifindex, ipv4_addr);
-	} else {
-       printf("handle neigh add if_index %d ip_addr 0x%x\n mac %x:%x:%x:%x:%x:%x ",
-		      ndm->ndm_ifindex, ipv4_addr, mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);
-	}
     if (ndm->ndm_family == AF_INET)
     {
         //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
