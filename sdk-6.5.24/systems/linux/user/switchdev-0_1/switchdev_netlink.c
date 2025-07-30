@@ -267,17 +267,17 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 {
     struct nl_addr   *nl_addr;
     uint32_t          ifindex;
-	struct rtnl_addr *addr;
-	char              ifname[IF_NAMESIZE+1];
+    struct rtnl_addr *addr;
+    char              ifname[IF_NAMESIZE+1];
     uint32_t          ipv4_addr, *ipv6_addr;
     uint8_t           prefixlen;
-	bcm_l3_host_t     host_info;
+    bcm_l3_host_t     host_info;
 
 
-	addr = (struct rtnl_addr *)obj;
+    addr = (struct rtnl_addr *)obj;
 
-	ifindex = rtnl_addr_get_ifindex(addr);
-	if_indextoname(ifindex, ifname);
+    ifindex = rtnl_addr_get_ifindex(addr);
+    if_indextoname(ifindex, ifname);
     nl_addr = rtnl_addr_get_local(addr);
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
@@ -287,17 +287,17 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
         printf("add index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
-		//Create l3table, and bind to l3 egress object
-		//TODO, need to be more accurate
-		if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
-			bcm_l3_host_t_init(&host_info);
+	//Create l3table, and bind to l3 egress object
+	//TODO, need to be more accurate
+	if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+            bcm_l3_host_t_init(&host_info);
             host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
 			host_info.l3a_intf = punt_l3_interface;
 			host_info.l3a_lookup_class = 1;
             bcm_l3_host_add(0, &host_info);
-		}
+	}
 
-	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
+    } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
@@ -312,23 +312,24 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
             memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
             bcm_l3_host_add(0, &host_info);
         }
-	}
+    }
 }
+
 void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 {
     struct nl_addr   *nl_addr;
     uint32_t          ifindex;
-	struct rtnl_addr *addr;
-	char              ifname[IF_NAMESIZE+1];
+    struct rtnl_addr *addr;
+    char              ifname[IF_NAMESIZE+1];
     uint32_t          ipv4_addr, *ipv6_addr;
     uint8_t           prefixlen;
-	bcm_l3_host_t     host_info;
+    bcm_l3_host_t     host_info;
 
 
-	addr = (struct rtnl_addr *)obj;
+    addr = (struct rtnl_addr *)obj;
 
-	ifindex = rtnl_addr_get_ifindex(addr);
-	if_indextoname(ifindex, ifname);
+    ifindex = rtnl_addr_get_ifindex(addr);
+    if_indextoname(ifindex, ifname);
     nl_addr = rtnl_addr_get_local(addr);
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
@@ -338,16 +339,16 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
         printf("del index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
-		//TODO, need to be more accurate
-		if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+        //TODO, need to be more accurate
+        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
 			bcm_l3_host_t_init(&host_info);
             host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
 			host_info.l3a_intf = punt_l3_interface;
 			host_info.l3a_lookup_class = 1;
             bcm_l3_host_delete(0, &host_info);
-		}
+	}
 
-	} else if  (rtnl_addr_get_family(addr) == AF_INET6) {
+    } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
@@ -363,7 +364,7 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
             bcm_l3_host_delete(0, &host_info);
         }
 	
-	}
+    }
 }
 
 #ifndef NDA_RTA
@@ -390,6 +391,7 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
     int        msgtype = n->nlmsg_type;
     uint8_t    mac_addr[6];
     uint32_t   ipv4_addr;
+    char       ifname[IF_NAMESIZE+1];
 
 
     if (n->nlmsg_type == NLMSG_DONE)
@@ -429,11 +431,13 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
     memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
     
     if (!is_del && tb[NDA_LLADDR]) {
-    memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+        memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
     }
     
-    printf("handle neigh msg %d if_index %d ip_addr 0x%x\n mac %x:%x:%x:%x:%x:%x ",
-           msgtype, ndm->ndm_ifindex, ipv4_addr, mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);
+    if_indextoname(ndm->ndm_ifindex, ifname);
+    printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
+           msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
+	   mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);
 
     if (ndm->ndm_family == AF_INET)
     {
@@ -456,6 +460,7 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
     /* Update netlink message counters */
     //system_update_netlink_counters(nlh->nlmsg_type, nlh);
+    //printf("switchdev_route_event_handler %d\n", nlh->nlmsg_type);
 
     switch (nlh->nlmsg_type)
     {
@@ -467,7 +472,8 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
         case RTM_NEWNEIGH:
         case RTM_DELNEIGH:
-		    switchdv_handle_neigh_request(nlh);
+	    printf("switchdev_route_event_handler handle neigh request\n");
+	    switchdv_handle_neigh_request(nlh);
             break;
 
         case RTM_NEWADDR:
@@ -719,6 +725,20 @@ int switchdev_netlink_main(void)
     nl_socket_modify_cb(route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
                         switchdev_route_event_handler, NULL);
 
+    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_NEIGH);
+    if (ret < 0)
+    {
+        printf("Failed to add netlink neigh membership.");
+        goto out;
+    }
+
+    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_LINK);
+    if (ret < 0)
+    {
+        printf("Failed to add netlink neigh membership.");
+        goto out;
+    }
+ 
     ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
     if (ret < 0)
     {
@@ -733,7 +753,7 @@ int switchdev_netlink_main(void)
         goto out;
     }
 
-	ev.events = EPOLLIN;
+    ev.events = EPOLLIN;
     ev.data.fd = route_event_fd;
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, route_event_fd, &ev);
 
