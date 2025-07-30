@@ -453,6 +453,52 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
     return (0);
 }
 
+
+
+static int switchdv_handle_route_request(struct nlmsghdr *n)
+{
+    struct rtmsg  *rtm = NLMSG_DATA(n);
+    struct rtattr *tb[NDA_MAX + 1] = {0};	
+    int        len = n->nlmsg_len;
+    int        is_del = 0;
+    int        msgtype = n->nlmsg_type;
+    uint32_t   ipv4_src = 0, ipv4_dst = 0, ipv4_gw = 0;
+    uint32_t   ifindex;
+    char       ifname[IF_NAMESIZE+1];
+
+    if (n->nlmsg_type == NLMSG_DONE)
+    {
+        return 0;
+    }
+
+    /* process msg_type RTM_NEWROUTE, RTM_DELROUTE */
+    if (n->nlmsg_type != RTM_NEWROUTE && n->nlmsg_type  != RTM_DELROUTE )
+        return(0);
+
+    ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(rtm), len);
+
+    if (rtm->rtm_family == AF_INET)
+    {
+        //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
+        memcpy(&ipv4_dst, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
+
+        if (tb[RTA_GATEWAY]) {
+            memcpy(&ipv4_gw, RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
+        }
+
+        if (tb[RTA_OIF]) {
+            memcpy(&ifindex, RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
+        }
+
+        printf("handle rt msg %d ifindex %d  dst 0x%x/%d gw 0x%x\n",
+               msgtype, ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
+    } else if (rtm->rtm_family == AF_INET6) {
+        //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
+    }
+
+    return (0);
+}
+
 static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 {
     struct nlmsghdr *nlh = nlmsg_hdr(msg);
@@ -487,6 +533,10 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 		    }
             break;
 
+        case RTM_NEWROUTE:
+        case RTM_DELROUTE:
+            printf("switchdev_route_event_handler handle route request\n");
+            switchdv_handle_route_request(nlh);
         default:
             return NL_OK;
     }
@@ -742,17 +792,30 @@ int switchdev_netlink_main(void)
     ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
     if (ret < 0)
     {
-        printf("Failed to add netlink ipv4 membership.");
+        printf("Failed to add netlink ipv4 if addr membership.");
         goto out;
     }
 
     ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV6_IFADDR);
     if (ret < 0)
     {
-        printf("Failed to add netlink ipv6 membership.");
+        printf("Failed to add netlink ipv6 ifaddr membership.");
         goto out;
     }
 
+    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_ROUTE);
+    if (ret < 0)
+    {
+        printf("Failed to add netlink ipv4 route membership.");
+        goto out;
+    }
+
+    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV6_ROUTE);
+    if (ret < 0)
+    {
+        printf("Failed to add netlink ipv6 route membership.");
+        goto out;
+    }    
     ev.events = EPOLLIN;
     ev.data.fd = route_event_fd;
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, route_event_fd, &ev);
