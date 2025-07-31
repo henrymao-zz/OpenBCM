@@ -25,6 +25,7 @@ struct bcm_switchdev {
 	struct notifier_block swdev_nb_blk;
 	struct notifier_block swdev_nb;
     struct notifier_block netdev_nb;
+	struct notifer_block  fib_nb;
 };
 
 

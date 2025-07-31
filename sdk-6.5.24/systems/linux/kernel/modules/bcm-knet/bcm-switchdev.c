@@ -667,6 +667,56 @@ static int bcm_netdevice_event(struct notifier_block *unused,
     return err;
 }
 
+/* Called with rcu_read_lock() */
+static int bcm_fib_event(struct notifier_block *nb,
+				     unsigned long event, void *ptr)
+{
+	struct fib_notifier_info *info = ptr;
+	int err;
+
+	if ((info->family != AF_INET && info->family != AF_INET6 &&
+	     info->family != RTNL_FAMILY_IPMR &&
+	     info->family != RTNL_FAMILY_IP6MR))
+		return NOTIFY_DONE;
+
+	switch (event) {
+        case FIB_EVENT_RULE_ADD:
+        case FIB_EVENT_RULE_DEL:
+            printk("bcm_fib_event %d \n", event);
+            break;
+        case FIB_EVENT_ENTRY_ADD:
+            printk("bcm_fib_event entry add dst 0x%x/%d");
+            if (info->fi->nh) {
+                printk("nh %d\n", info->fi->nh->id);
+            } else {
+                printk("\n");
+            }
+            break;
+	    case FIB_EVENT_ENTRY_REPLACE:
+            printk("bcm_fib_event entry replace dst 0x%x/%d");
+            if (info->fi->nh) {
+                printk("nh %d\n", info->fi->nh->id);
+            } else {
+                printk("\n");
+            }    
+	    case FIB_EVENT_ENTRY_APPEND:
+            printk("bcm_fib_event entry append dst 0x%x/%d");
+            if (info->fi->nh) {
+                printk("nh %d\n", info->fi->nh->id);
+            } else {
+                printk("\n");
+            }    
+		    break;
+        case FIB_EVENT_ENTRY_DEL:
+            printk("bcm_fib_event entry append dst 0x%x/%d");
+            break;
+        default:
+            break;
+	}
+
+	return NOTIFY_DONE;
+}
+
 static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
 {
     int err;
@@ -677,6 +727,12 @@ static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
     if (err)
         goto err_register_netdev_notifier;
 
+    swdev->fib_nb.notifier_call = bcm_router_fib_event;
+    err = register_fib_notifier(&init_net, &swdev->fib_nb, NULL, NULL);
+    if (err)
+        goto err_register_fib_notifier;
+
+    
     swdev->swdev_nb.notifier_call = bcm_switchdev_event;
     err = register_switchdev_notifier(&swdev->swdev_nb);
     if (err)
@@ -695,7 +751,10 @@ err_register_blk_swdev_notifier:
     unregister_switchdev_notifier(&swdev->swdev_nb);
 err_register_swdev_notifier:
     printk("bcm_switchdev_handler_init non blk failed %d\n", err);
-    unregister_switchdev_notifier(&swdev->netdev_nb);
+    unregister_fib_notifier(&swdev->fib_nb);    
+err_register_fib_notifier:
+    printk("bcm_switchdev_handler_init fib failed %d\n", err);
+    unregister_switchdev_notifier(&swdev->netdev_nb);    
 err_register_netdev_notifier:
     printk("bcm_switchdev_handler_init netdev failed %d\n", err);
     destroy_workqueue(swdev_wq);
