@@ -284,24 +284,23 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
         ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("add index %d %s address 0x%x prefix %d\n",
+        printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
-	//Create l3table, and bind to l3 egress object
-	//TODO, need to be more accurate
-	if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
+	    //Create l3table, and bind to l3 egress object
+	    //TODO, need to be more accurate
+        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
             bcm_l3_host_t_init(&host_info);
             host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
 			host_info.l3a_intf = punt_l3_interface;
 			host_info.l3a_lookup_class = 1;
             bcm_l3_host_add(0, &host_info);
-	}
-
+        }
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("add index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+        printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
                 ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
         if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
@@ -336,7 +335,7 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
         ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("del index %d %s address 0x%x prefix %d\n",
+        printf("ipv4 l3 host del: index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
         //TODO, need to be more accurate
@@ -346,13 +345,13 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 			host_info.l3a_intf = punt_l3_interface;
 			host_info.l3a_lookup_class = 1;
             bcm_l3_host_delete(0, &host_info);
-	}
+	    }
 
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("del index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+        printf("ipv6 l3 host del: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
                 ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
         if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
@@ -490,8 +489,13 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
             memcpy(&ifindex, RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
         }
 
-        printf("handle rt msg %d ifindex %d  dst 0x%x/%d gw 0x%x\n",
-               msgtype, ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
+        if (msgtype == RTM_NEWROUTE) {
+            printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+                   ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
+        } else {
+            printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+                   ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);                  
+        }
     } else if (rtm->rtm_family == AF_INET6) {
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
     }
@@ -518,8 +522,8 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
         case RTM_NEWNEIGH:
         case RTM_DELNEIGH:
-	    printf("switchdev_route_event_handler handle neigh request\n");
-	    switchdv_handle_neigh_request(nlh);
+	        //printf("switchdev_route_event_handler handle neigh request\n");
+	        switchdv_handle_neigh_request(nlh);
             break;
 
         case RTM_NEWADDR:
@@ -535,7 +539,7 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
         case RTM_NEWROUTE:
         case RTM_DELROUTE:
-            printf("switchdev_route_event_handler handle route request\n");
+            //printf("switchdev_route_event_handler handle route request\n");
             switchdv_handle_route_request(nlh);
         default:
             return NL_OK;
