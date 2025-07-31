@@ -459,11 +459,10 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
     struct rtmsg  *rtm = NLMSG_DATA(n);
     struct rtattr *tb[NDA_MAX + 1] = {0};	
     int        len = n->nlmsg_len;
-    int        is_del = 0;
     int        msgtype = n->nlmsg_type;
-    uint32_t   ipv4_src = 0, ipv4_dst = 0, ipv4_gw = 0;
+    uint32_t   ipv4_dst = 0, ipv4_gw = 0;
     uint32_t   ifindex;
-    char       ifname[IF_NAMESIZE+1];
+    //char       ifname[IF_NAMESIZE+1];
 
     if (n->nlmsg_type == NLMSG_DONE)
     {
