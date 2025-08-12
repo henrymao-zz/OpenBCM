@@ -452,7 +452,50 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
     return (0);
 }
 
+static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
+{
+	struct {
+		struct nlmsghdr	n;
+		struct ndmsg		ndm;
+		char			buf[1024];
+	} req = {
+		.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg)),
+		.n.nlmsg_flags = NLM_F_REQUEST,
+		.n.nlmsg_type = RTM_GETNEIGH,
+		.ndm.ndm_family = AF_INET4,
+	};
+	struct nlmsghdr *answer;
+    struct ndmsg    *r;
+    int             len;
+    struct rtattr  *tb[NDA_MAX+1];
 
+    req.ndm.ndm_family = family;
+
+    if (addattr_l(&req.n, sizeof(req), NDA_DST, &addr, sizeof(uint32_t)) < 0)
+		return -1;
+
+    if (rtnl_talk(&rth, &req.n, &answer) < 0) {
+        return -2;
+    }
+    
+    r = NLMSG_DATA(answer);
+    len = answer->nlmsg_len;
+    len -= NLMSG_LENGTH(sizeof(*r));
+    if (len < 0) {
+        printf("BUG: wrong nlmsg len %d\n", len);
+        return -3;
+    }
+    parse_rtattr(tb, NDA_MAX, NDA_RTA(r), answer->nlmsg_len - NLMSG_LENGTH(sizeof(*r)));
+
+    if (tb[NDA_LLADDR]) {
+        //TODO, add support for different lladdr types
+        memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+        printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
+               *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
+    }
+
+    return 0;
+}
 
 static int switchdv_handle_route_request(struct nlmsghdr *n)
 {
@@ -463,6 +506,8 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
     uint32_t   ipv4_dst = 0, ipv4_gw = 0;
     uint32_t   ifindex;
     //char       ifname[IF_NAMESIZE+1];
+    int        rc = 0;
+    uint8_t    mac_addr[6];
 
     if (n->nlmsg_type == NLMSG_DONE)
     {
@@ -477,7 +522,6 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
 
     if (rtm->rtm_family == AF_INET)
     {
-        //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
         memcpy(&ipv4_dst, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
 
         if (tb[RTA_GATEWAY]) {
@@ -495,6 +539,27 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
             printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
                    ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);                  
         }
+        /*************************************************************/
+        /*          Get Neigh(l3 egress) for ipv4_gw                 */
+        /*************************************************************/
+        // 1. get MAC address from ip neigh
+        rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, mac_addr);
+
+        // if ip neigh does not exist, need to put fib into wait list
+        if (rc) {
+            //TODO
+            return 0;
+        }
+        // 2. get intf from l3 egress table
+
+        // l3 egress should have been created, but try to recreate
+        
+        
+        /*************************************************************/
+        /*         Create l3 defip (class = 0)                       */
+        /*************************************************************/
+
+
     } else if (rtm->rtm_family == AF_INET6) {
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
     }
