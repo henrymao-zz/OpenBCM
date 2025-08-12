@@ -21,6 +21,7 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/family.h>
 #include <netlink/route/link.h>
+#include <netlink/rtnetlink.h>
 #include <net/if.h>
 
 #include <sys/epoll.h>
@@ -111,35 +112,35 @@ static int handle_netdev_event(struct nl_msg *msg)
 
 static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 {
-	char *ifname;
-	int   port, if_flag;
-	int   vlan, vlan_flags;
-	int   err = 0;
-	bool  untagged;
+    char *ifname;
+    int   port, if_flag;
+    int   vlan, vlan_flags;
+    int   err = 0;
+    bool  untagged;
     bcm_pbmp_t pbmp, ubmp;
 
     port = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_PORT]);
-	if_flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
+    if_flag = nla_get_u32(tb[SWITCHDEV_A_PORT_IF_FLAG]);
     ifname = nla_get_string(tb[SWITCHDEV_A_PORT_IF_NAME]);
-	vlan = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_ID]);
-	vlan_flags = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_FLAGS]);
-	
-
-
-	printf("switchdev_port_vlan_add name %s port %d vlan %d flag 0x%x vlan_flags 0x%x\n", 
-            ifname, port, vlan, if_flag, vlan_flags);
-
-	//TODO check flag for Bridge root
-
-
-	//check vlan_flags
-	//pvid = vlan_flags & BRIDGE_VLAN_INFO_PVID;
-	untagged = vlan_flags & BRIDGE_VLAN_INFO_UNTAGGED;
-
-	bcm_vlan_create(0, vlan); // create if does not exist
-
-	//config port
-	/* Untagged vlan classification */
+    vlan = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_ID]);
+    vlan_flags = nla_get_u32(tb[SWITCHDEV_A_PORT_VLAN_FLAGS]);
+    
+    
+    
+    printf("switchdev_port_vlan_add name %s port %d vlan %d flag 0x%x vlan_flags 0x%x\n", 
+        ifname, port, vlan, if_flag, vlan_flags);
+    
+    //TODO check flag for Bridge root
+    
+    
+    //check vlan_flags
+    //pvid = vlan_flags & BRIDGE_VLAN_INFO_PVID;
+    untagged = vlan_flags & BRIDGE_VLAN_INFO_UNTAGGED;
+    
+    bcm_vlan_create(0, vlan); // create if does not exist
+    
+    //config port
+    /* Untagged vlan classification */
     BCM_PBMP_PORT_SET(pbmp, port);
 
     if (untagged) {
@@ -150,7 +151,7 @@ static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 
     err = bcm_vlan_port_add(0, vlan, pbmp, ubmp);
 
-	return err;
+    return err;
 }
 
 static int handle_switchdev_port_obj_add(struct nlattr *tb[])
@@ -462,7 +463,7 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
 		.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg)),
 		.n.nlmsg_flags = NLM_F_REQUEST,
 		.n.nlmsg_type = RTM_GETNEIGH,
-		.ndm.ndm_family = AF_INET4,
+		.ndm.ndm_family = AF_INET,
 	};
 	struct nlmsghdr *answer;
     struct ndmsg    *r;
@@ -738,79 +739,79 @@ static void set_nonblocking(int fd)
 #define EPOLL_MAX_EVENTS 10
 int switchdev_netlink_main(void)
 {
-	int		ret = 1;
-	struct  nl_sock *ucsk, *mcsk, *route_event_sock;
-	int     ucsk_fd, mcsk_fd, route_event_fd, timer_fd;
-	int     epoll_fd;
+    int		ret = 1;
+    struct  nl_sock *ucsk, *mcsk, *route_event_sock;
+    int     ucsk_fd, mcsk_fd, route_event_fd, timer_fd;
+    int     epoll_fd;
     struct epoll_event ev, events[EPOLL_MAX_EVENTS];
 	struct itimerspec keepalive_value = {
         .it_value = {1, 0},  
         .it_interval = {1, 0}
     };
 
-	/*
-	 * We use one socket to receive asynchronous "notifications" over
-	 * multicast group, and another for ops. We do this so that we don't mix
-	 * up responses from ops with notifications to make handling easier.
-	 */
-	if ((ret = conn(&ucsk)) || (ret = conn(&mcsk))) {
-		prerr("failed to connect to generic netlink\n");
-		goto out;
-	}
-
-	/* Resolve the genl family. One family for both unicast and multicast. */
-	int fam = genl_ctrl_resolve(ucsk, SWITCHDEV_GENL_NAME);
-	if (fam < 0) {
-		prerr("failed to resolve generic netlink family: %s\n",
-		      strerror(-fam));
-		goto out;
-	}
-
-	/* Disable sequence checks for asynchronous multicast messages. */
-	nl_socket_disable_seq_check(mcsk);
-
-	/* Disable sequence checks for unicast messages. */
-	nl_socket_disable_seq_check(ucsk);
-
-	/* Resolve the multicast group. */
-	int mcgrp = genl_ctrl_resolve_grp(mcsk, SWITCHDEV_GENL_NAME,
-					  SWITCHDEV_MC_GRP_NAME);
-	if (mcgrp < 0) {
-		prerr("failed to resolve generic netlink multicast group: %s\n",
-		      strerror(-mcgrp));
-		goto out;
-	}
-	/* Join the multicast group. */
-	if ((ret = nl_socket_add_membership(mcsk, mcgrp) < 0)) {
-		prerr("failed to join multicast group: %s\n", strerror(-ret));
-		goto out;
-	}
-
-	if ((ret = set_cb(ucsk)) || (ret = set_cb(mcsk))) {
-		prerr("failed to set callback: %s\n", strerror(-ret));
-		goto out;
-	}
+    /*
+     * We use one socket to receive asynchronous "notifications" over
+     * multicast group, and another for ops. We do this so that we don't mix
+     * up responses from ops with notifications to make handling easier.
+     */
+    if ((ret = conn(&ucsk)) || (ret = conn(&mcsk))) {
+    	prerr("failed to connect to generic netlink\n");
+    	goto out;
+    }
+    
+    /* Resolve the genl family. One family for both unicast and multicast. */
+    int fam = genl_ctrl_resolve(ucsk, SWITCHDEV_GENL_NAME);
+    if (fam < 0) {
+    	prerr("failed to resolve generic netlink family: %s\n",
+    	      strerror(-fam));
+    	goto out;
+    }
+    
+    /* Disable sequence checks for asynchronous multicast messages. */
+    nl_socket_disable_seq_check(mcsk);
+    
+    /* Disable sequence checks for unicast messages. */
+    nl_socket_disable_seq_check(ucsk);
+    
+    /* Resolve the multicast group. */
+    int mcgrp = genl_ctrl_resolve_grp(mcsk, SWITCHDEV_GENL_NAME,
+    				  SWITCHDEV_MC_GRP_NAME);
+    if (mcgrp < 0) {
+    	prerr("failed to resolve generic netlink multicast group: %s\n",
+    	      strerror(-mcgrp));
+    	goto out;
+    }
+    /* Join the multicast group. */
+    if ((ret = nl_socket_add_membership(mcsk, mcgrp) < 0)) {
+    	prerr("failed to join multicast group: %s\n", strerror(-ret));
+    	goto out;
+    }
+    
+    if ((ret = set_cb(ucsk)) || (ret = set_cb(mcsk))) {
+    	prerr("failed to set callback: %s\n", strerror(-ret));
+    	goto out;
+    }
 
     // send start and listen for response
-   	if ((ret = send_start_msg(ucsk, fam))) {
-		prerr("failed to send message: %s\n", strerror(-ret));
-	}
-	printf("listening for messages\n");
-	nl_recvmsgs_default(ucsk);
-	
-	//TimerFD 
+    if ((ret = send_start_msg(ucsk, fam))) {
+    	prerr("failed to send message: %s\n", strerror(-ret));
+    }
+    printf("listening for messages\n");
+    nl_recvmsgs_default(ucsk);
+    
+    //TimerFD 
     timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
     timerfd_settime(timer_fd, 0, &keepalive_value, NULL);
 
     ucsk_fd = nl_socket_get_fd(ucsk);
     set_nonblocking(ucsk_fd);
 
-	mcsk_fd = nl_socket_get_fd(mcsk);
-	set_nonblocking(mcsk_fd);
+    mcsk_fd = nl_socket_get_fd(mcsk);
+    set_nonblocking(mcsk_fd);
 
     epoll_fd = epoll_create1(0);
 
-	if (epoll_fd < 0) {
+    if (epoll_fd < 0) {
         perror("epoll_create1 failed");
         goto out;
     }
@@ -823,22 +824,22 @@ int switchdev_netlink_main(void)
     ev.data.fd = mcsk_fd;
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, mcsk_fd, &ev);	
 
-	ev.events = EPOLLIN;
+    ev.events = EPOLLIN;
     ev.data.fd = timer_fd;
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev);
 	
 
-	//create netlink socket for route event
+    //create netlink socket for route event
     route_event_sock = nl_socket_alloc();
-	ret = nl_connect(route_event_sock, NETLINK_ROUTE);
+    ret = nl_connect(route_event_sock, NETLINK_ROUTE);
     if (ret)
     {
         printf("Failed to connect to netlink route_event_sock. ");
 		goto out;
     }
     nl_socket_disable_seq_check(route_event_sock);
-	route_event_fd = nl_socket_get_fd(route_event_sock);
-	set_nonblocking(route_event_fd);
+    route_event_fd = nl_socket_get_fd(route_event_sock);
+    set_nonblocking(route_event_fd);
 
     nl_socket_modify_cb(route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
                         switchdev_route_event_handler, NULL);
@@ -895,21 +896,21 @@ int switchdev_netlink_main(void)
                 nl_recvmsgs_default(ucsk);
             } else if (events[i].data.fd == mcsk_fd) {
                 nl_recvmsgs_default(mcsk);
-			} else if (events[i].data.fd == timer_fd) {
+            } else if (events[i].data.fd == timer_fd) {
                 send_keepalive_msg(ucsk, fam);
-			} else if (events[i].data.fd == route_event_fd) {
+            } else if (events[i].data.fd == route_event_fd) {
                 nl_recvmsgs_default(route_event_sock);
-			} else {
+            } else {
                prerr("unknown event %d\n", events[i].data.fd);
-			}
+            }
         }
     }
 
-	ret = 0;
+    ret = 0;
 out:
-	disconn(ucsk);
-	disconn(mcsk);
-	disconn(route_event_sock);
-	return ret;
+    disconn(ucsk);
+    disconn(mcsk);
+    disconn(route_event_sock);
+    return ret;
 }
 
