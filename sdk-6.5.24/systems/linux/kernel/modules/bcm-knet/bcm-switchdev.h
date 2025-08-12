@@ -20,12 +20,12 @@ struct bcm_switchdev_event_work {
 };
 
 struct bcm_switchdev {
-	struct list_head bridge_list;
-	bool bridge_8021q_exists;
-	struct notifier_block swdev_nb_blk;
-	struct notifier_block swdev_nb;
+    struct list_head bridge_list;
+    bool bridge_8021q_exists;
+    struct notifier_block swdev_nb_blk;
+    struct notifier_block swdev_nb;
     struct notifier_block netdev_nb;
-	struct notifer_block  fib_nb;
+    struct notifier_block fib_nb;
 };
 
 

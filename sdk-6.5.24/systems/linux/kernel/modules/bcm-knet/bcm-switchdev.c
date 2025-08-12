@@ -668,10 +668,11 @@ static int bcm_netdevice_event(struct notifier_block *unused,
 }
 
 /* Called with rcu_read_lock() */
-static int bcm_fib_event(struct notifier_block *nb,
+static int bcm_router_fib_event(struct notifier_block *nb,
 				     unsigned long event, void *ptr)
 {
 	struct fib_notifier_info *info = ptr;
+	struct fib_entry_notifier_info *fen_info;
 	int err;
 
 	if ((info->family != AF_INET && info->family != AF_INET6 &&
@@ -679,36 +680,38 @@ static int bcm_fib_event(struct notifier_block *nb,
 	     info->family != RTNL_FAMILY_IP6MR))
 		return NOTIFY_DONE;
 
+	fen_info = container_of(info, struct fib_entry_notifier_info,
+					info);
 	switch (event) {
         case FIB_EVENT_RULE_ADD:
         case FIB_EVENT_RULE_DEL:
             printk("bcm_fib_event %d \n", event);
             break;
         case FIB_EVENT_ENTRY_ADD:
-            printk("bcm_fib_event entry add dst 0x%x/%d");
-            if (info->fi->nh) {
-                printk("nh %d\n", info->fi->nh->id);
-            } else {
-                printk("\n");
-            }
+            printk("bcm_fib_event entry add dst 0x%x/%d\n", fen_info->dst, fen_info->dst_len);
+            //if (fen_info->fi->nh) {
+            //    printk("nh %d\n", fen_info->fi->nh->id);
+            //} else {
+            //    printk("\n");
+            //}
             break;
 	    case FIB_EVENT_ENTRY_REPLACE:
-            printk("bcm_fib_event entry replace dst 0x%x/%d");
-            if (info->fi->nh) {
-                printk("nh %d\n", info->fi->nh->id);
-            } else {
-                printk("\n");
-            }    
+            printk("bcm_fib_event entry replace dst 0x%x/%d\n", fen_info->dst, fen_info->dst_len);
+            //if (fen_info->fi->nh) {
+            //    printk("nh %d\n", fen_info->fi->nh->id);
+            //} else {
+            //    printk("\n");
+            //}    
 	    case FIB_EVENT_ENTRY_APPEND:
-            printk("bcm_fib_event entry append dst 0x%x/%d");
-            if (info->fi->nh) {
-                printk("nh %d\n", info->fi->nh->id);
-            } else {
-                printk("\n");
-            }    
-		    break;
+            printk("bcm_fib_event entry append dst 0x%x/%d\n", fen_info->dst, fen_info->dst_len);
+            //if (fen_info->fi->nh) {
+            //    printk("nh %d\n", fen_info->fi->nh->id);
+            //} else {
+            //    printk("\n");
+            //}    
+            break;
         case FIB_EVENT_ENTRY_DEL:
-            printk("bcm_fib_event entry append dst 0x%x/%d");
+            printk("bcm_fib_event entry append dst 0x%x/%d\n", fen_info->dst, fen_info->dst_len);
             break;
         default:
             break;
@@ -751,7 +754,7 @@ err_register_blk_swdev_notifier:
     unregister_switchdev_notifier(&swdev->swdev_nb);
 err_register_swdev_notifier:
     printk("bcm_switchdev_handler_init non blk failed %d\n", err);
-    unregister_fib_notifier(&swdev->fib_nb);    
+    unregister_fib_notifier(&init_net, &swdev->fib_nb);    
 err_register_fib_notifier:
     printk("bcm_switchdev_handler_init fib failed %d\n", err);
     unregister_switchdev_notifier(&swdev->netdev_nb);    
