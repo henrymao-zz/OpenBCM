@@ -146,5 +146,21 @@ enum switchdev_obj_id {
 	SWITCHDEV_OBJ_ID_IN_STATE_MRP,
 };
 
+typedef struct switch_service_s {
+   struct  nl_sock *generic_sock;
+   struct  nl_sock *ucsk;
+   struct  nl_sock *mcsk;
+   struct  nl_sock *route_event_sock;
+
+   int     ucsk_fd;
+   int     mcsk_fd;
+   int     route_event_fd;
+   int     timer_fd;
+   int     epoll_fd;   
+
+}switch_service_t;
+
+int switchdev_netlink_main(void);
+switch_service_t* system_get_instance();
 
 #endif 

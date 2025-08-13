@@ -38,6 +38,8 @@
 #include <opennsa/l3.h>
 #include <opennsa/range.h>
 
+#include "switchdev_netlink.h"
+
 //#include <soc/esw/cancun.h>
 /*
  * CANCUN file type enumeration
@@ -2211,7 +2213,35 @@ uint32 pci_config_getw(pci_dev_t *dev, uint32 addr)
 static int switchdev_netlink_thread_priority = 100;
 static volatile sal_thread_t switchdev_netlink_thread_id        = SAL_THREAD_ERROR;
 
-extern int switchdev_netlink_main(void);
+
+static void switchdev_system_init(switch_service_t* sys)
+{
+    if (sys == NULL )
+        return;
+
+    memset(sys, 0, sizeof(switch_service_t));
+
+    return;
+}
+
+/* Singleton */
+switch_service_t* system_get_instance()
+{
+    static switch_service_t* sys = NULL;
+
+    if (sys == NULL )
+    {
+        sys = (switch_service_t*)malloc(sizeof(switch_service_t));
+        if (sys == NULL )
+        {
+            printf("Failed to obtain system instance.\n");
+            return NULL;
+        }
+        switchdev_system_init(sys);
+    }
+
+    return sys;
+}
 
 static void
 switchdev_netlink_thread(void *cookie)

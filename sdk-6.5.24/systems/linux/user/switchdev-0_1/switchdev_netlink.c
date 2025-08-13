@@ -70,6 +70,81 @@
  * Current libnl repo: https://github.com/thom311/libnl
  */
 
+
+static int switchdev_ops_ack_handler(struct nl_msg *msg, void *arg)
+{
+    bool *acked = arg;
+
+    *acked = true;
+
+    return NL_STOP;
+}
+
+static int switchdev_ops_seq_check_handler(struct nl_msg *msg, void *arg)
+{
+    unsigned int *seq = arg;
+    struct nlmsghdr *hdr = nlmsg_hdr(msg);
+
+    if (hdr->nlmsg_seq != *seq)
+        return NL_SKIP;
+
+    return NL_OK;
+}
+int switchdev_ops_send_and_recv(switch_service_t *sys, struct nl_msg *msg,
+                       int (*valid_handler)(struct nl_msg *, void *),
+                       void *valid_data)
+{
+    int ret;
+    struct nl_cb *cb;
+    struct nl_cb *orig_cb;
+    bool acked;
+    unsigned int seq = sys->generic_sock_seq++;
+    int err;
+
+    ret = nl_send_auto(sys->generic_sock, msg);
+    nlmsg_free(msg);
+    if (ret < 0)
+        return ret;
+
+    orig_cb = nl_socket_get_cb(sys->generic_sock);
+    cb = nl_cb_clone(orig_cb);
+    nl_cb_put(orig_cb);
+    if (!cb)
+        return -ENOMEM;
+
+    nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, switchdev_ops_ack_handler, &acked);
+    nl_cb_set(cb, NL_CB_SEQ_CHECK, NL_CB_CUSTOM, switchdev_ops_seq_check_handler, &seq);
+    if (valid_handler)
+        nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, valid_handler, valid_data);
+
+    /* There is a bug in libnl. When implicit sequence number checking is in
+     * use the expected next number is increased when NLMSG_DONE is
+     * received. The ACK which comes after that correctly includes the
+     * original sequence number. However libnl is checking that number
+     * against the incremented one and therefore ack handler is never called
+     * and nl_recvmsgs finished with an error. To resolve this, custom
+     * sequence number checking is used here.
+     */
+
+    acked = false;
+
+    while (!acked)
+    {
+        ret = nl_recvmsgs(sys->generic_sock, cb);
+        if (ret)
+        {
+            err = ret;
+            goto put_cb;
+        }
+    }
+
+    err = 0;
+put_cb:
+    nl_cb_put(cb);
+    return err;
+}
+
+
 static int handle_netdev_event(struct nl_msg *msg)
 {
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
@@ -453,47 +528,65 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
     return (0);
 }
 
-static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
+static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
 {
-	struct {
-		struct nlmsghdr	n;
-		struct ndmsg		ndm;
-		char			buf[1024];
-	} req = {
-		.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg)),
-		.n.nlmsg_flags = NLM_F_REQUEST,
-		.n.nlmsg_type = RTM_GETNEIGH,
-		.ndm.ndm_family = AF_INET,
-	};
-	struct nlmsghdr *answer;
-    struct ndmsg    *r;
-    int             len;
-    struct rtattr  *tb[NDA_MAX+1];
+    int		         err = 0;
+	struct nlmsghdr *nlh = nlmsg_hdr(msg);
+    struct ndmsg    *ndm = NLMSG_DATA(nlh);
+    struct rtattr   *tb[NDA_MAX + 1] = {0};	    
+    int              len = 0;
+    uint8_t         *mac_addr  = (uint8_t *)arg;
 
-    req.ndm.ndm_family = family;
 
-    if (addattr_l(&req.n, sizeof(req), NDA_DST, &addr, sizeof(uint32_t)) < 0)
-		return -1;
-
-    if (rtnl_talk(&rth, &req.n, &answer) < 0) {
-        return -2;
-    }
-    
-    r = NLMSG_DATA(answer);
-    len = answer->nlmsg_len;
-    len -= NLMSG_LENGTH(sizeof(*r));
-    if (len < 0) {
-        printf("BUG: wrong nlmsg len %d\n", len);
-        return -3;
-    }
-    parse_rtattr(tb, NDA_MAX, NDA_RTA(r), answer->nlmsg_len - NLMSG_LENGTH(sizeof(*r)));
+    ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
     if (tb[NDA_LLADDR]) {
         //TODO, add support for different lladdr types
         memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
-        printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
+        printf("ipneigh_get_handler addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
                *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
     }
+
+    return (0);
+}
+
+static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
+{
+    struct nl_msg    *msg;
+    struct ndmsg      ndm;
+    switch_service_t *sys;
+    int               err;
+    uint8_t           mac_addr[6];
+
+
+    sys = system_get_instance();
+    if (sys == NULL) {
+       return -1;
+    }
+
+    ndm.ndm_family = family;
+
+    msg = nl_msg_alloc_simple(RTM_GETNEIGH,NLM_F_REQUEST);
+
+    if (!msg) {
+        return -1;
+    }
+
+    ret = nlmsg_append(msg, &ndm, sizeof(ndm), NLMSG_ALIGNTO);
+
+    if (!ret) {
+        return ret;
+    }
+
+    err = nla_put_u32(msg, NDA_DST, addr);
+	if (err < 0) {
+		return -err;
+	}    
+
+    switchdev_ops_send_and_recv(sys, msg, ipneigh_get_handler, mac_addr);
+
+    printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
+            *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
 
     return 0;
 }
@@ -739,28 +832,27 @@ static void set_nonblocking(int fd)
 #define EPOLL_MAX_EVENTS 10
 int switchdev_netlink_main(void)
 {
-    int		ret = 1;
-    struct  nl_sock *ucsk, *mcsk, *route_event_sock;
-    int     ucsk_fd, mcsk_fd, route_event_fd, timer_fd;
-    int     epoll_fd;
     struct epoll_event ev, events[EPOLL_MAX_EVENTS];
 	struct itimerspec keepalive_value = {
         .it_value = {1, 0},  
         .it_interval = {1, 0}
     };
+    switch_service_t *sys = system_get_instance();
+    int               ret = 1;
+
 
     /*
      * We use one socket to receive asynchronous "notifications" over
      * multicast group, and another for ops. We do this so that we don't mix
      * up responses from ops with notifications to make handling easier.
      */
-    if ((ret = conn(&ucsk)) || (ret = conn(&mcsk))) {
+    if ((ret = conn(&sys->ucsk)) || (ret = conn(&sys->mcsk))) {
     	prerr("failed to connect to generic netlink\n");
     	goto out;
     }
     
     /* Resolve the genl family. One family for both unicast and multicast. */
-    int fam = genl_ctrl_resolve(ucsk, SWITCHDEV_GENL_NAME);
+    int fam = genl_ctrl_resolve(sys->ucsk, SWITCHDEV_GENL_NAME);
     if (fam < 0) {
     	prerr("failed to resolve generic netlink family: %s\n",
     	      strerror(-fam));
@@ -768,13 +860,13 @@ int switchdev_netlink_main(void)
     }
     
     /* Disable sequence checks for asynchronous multicast messages. */
-    nl_socket_disable_seq_check(mcsk);
+    nl_socket_disable_seq_check(sys->mcsk);
     
     /* Disable sequence checks for unicast messages. */
-    nl_socket_disable_seq_check(ucsk);
+    nl_socket_disable_seq_check(sys->ucsk);
     
     /* Resolve the multicast group. */
-    int mcgrp = genl_ctrl_resolve_grp(mcsk, SWITCHDEV_GENL_NAME,
+    int mcgrp = genl_ctrl_resolve_grp(sys->mcsk, SWITCHDEV_GENL_NAME,
     				  SWITCHDEV_MC_GRP_NAME);
     if (mcgrp < 0) {
     	prerr("failed to resolve generic netlink multicast group: %s\n",
@@ -782,124 +874,136 @@ int switchdev_netlink_main(void)
     	goto out;
     }
     /* Join the multicast group. */
-    if ((ret = nl_socket_add_membership(mcsk, mcgrp) < 0)) {
+    if ((ret = nl_socket_add_membership(sys->mcsk, mcgrp) < 0)) {
     	prerr("failed to join multicast group: %s\n", strerror(-ret));
     	goto out;
     }
     
-    if ((ret = set_cb(ucsk)) || (ret = set_cb(mcsk))) {
+    if ((ret = set_cb(sys->ucsk)) || (ret = set_cb(sys->mcsk))) {
     	prerr("failed to set callback: %s\n", strerror(-ret));
     	goto out;
     }
 
     // send start and listen for response
-    if ((ret = send_start_msg(ucsk, fam))) {
+    if ((ret = send_start_msg(sys->ucsk, fam))) {
     	prerr("failed to send message: %s\n", strerror(-ret));
     }
     printf("listening for messages\n");
-    nl_recvmsgs_default(ucsk);
+    nl_recvmsgs_default(sys->ucsk);
     
     //TimerFD 
-    timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
-    timerfd_settime(timer_fd, 0, &keepalive_value, NULL);
+    sys->timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    timerfd_settime(sys->timer_fd, 0, &keepalive_value, NULL);
 
-    ucsk_fd = nl_socket_get_fd(ucsk);
-    set_nonblocking(ucsk_fd);
+    sys->ucsk_fd = nl_socket_get_fd(sys->ucsk);
+    set_nonblocking(sys->ucsk_fd);
 
-    mcsk_fd = nl_socket_get_fd(mcsk);
-    set_nonblocking(mcsk_fd);
+    sys->mcsk_fd = nl_socket_get_fd(sys->mcsk);
+    set_nonblocking(sys->mcsk_fd);
 
-    epoll_fd = epoll_create1(0);
+    sys->epoll_fd = epoll_create1(0);
 
-    if (epoll_fd < 0) {
+    if (sys->epoll_fd < 0) {
         perror("epoll_create1 failed");
         goto out;
     }
 
     ev.events = EPOLLIN;
-    ev.data.fd = ucsk_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ucsk_fd, &ev);
+    ev.data.fd = sys->ucsk_fd;
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->ucsk_fd, &ev);
 
     ev.events = EPOLLIN;
-    ev.data.fd = mcsk_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, mcsk_fd, &ev);	
+    ev.data.fd = sys->mcsk_fd;
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->mcsk_fd, &ev);	
 
     ev.events = EPOLLIN;
-    ev.data.fd = timer_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev);
+    ev.data.fd = sys->timer_fd;
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->timer_fd, &ev);
 	
 
+    //create netlink socket for ops
+    sys->generic_sock = nl_socket_alloc();
+    sys->generic_sock_seq = time(NULL);
+    ret = nl_connect(sys->generic_sock, NETLINK_ROUTE);
+    if (ret)
+    {
+        printf("Failed to connect to netlink generic_sock. ");
+        goto out;
+    }
+    nl_socket_disable_seq_check(sys->generic_sock);
+    sys->generic_sock_fd = nl_socket_get_fd(sys->generic_sock);
+
     //create netlink socket for route event
-    route_event_sock = nl_socket_alloc();
-    ret = nl_connect(route_event_sock, NETLINK_ROUTE);
+    sys->route_event_sock = nl_socket_alloc();
+    ret = nl_connect(sys->route_event_sock, NETLINK_ROUTE);
     if (ret)
     {
         printf("Failed to connect to netlink route_event_sock. ");
 		goto out;
     }
-    nl_socket_disable_seq_check(route_event_sock);
-    route_event_fd = nl_socket_get_fd(route_event_sock);
-    set_nonblocking(route_event_fd);
+    nl_socket_disable_seq_check(sys->route_event_sock);
+    sys->route_event_fd = nl_socket_get_fd(sys->route_event_sock);
+    set_nonblocking(sys->route_event_fd);
 
-    nl_socket_modify_cb(route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
+    nl_socket_modify_cb(sys->route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
                         switchdev_route_event_handler, NULL);
 
-    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_NEIGH);
+    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_NEIGH);
     if (ret < 0)
     {
         printf("Failed to add netlink neigh membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_LINK);
+    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_LINK);
     if (ret < 0)
     {
         printf("Failed to add netlink neigh membership.");
         goto out;
     }
  
-    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_IFADDR);
+    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV4_IFADDR);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv4 if addr membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV6_IFADDR);
+    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV6_IFADDR);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv6 ifaddr membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV4_ROUTE);
+    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV4_ROUTE);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv4 route membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(route_event_sock, RTNLGRP_IPV6_ROUTE);
+    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV6_ROUTE);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv6 route membership.");
         goto out;
     }    
     ev.events = EPOLLIN;
-    ev.data.fd = route_event_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, route_event_fd, &ev);
+    ev.data.fd = sys->route_event_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sys->route_event_fd, &ev);
 
     while (1) {
-        int nfds = epoll_wait(epoll_fd, events, 10, -1);
+        int nfds = epoll_wait(sys->epoll_fd, events, 10, -1);
         for (int i = 0; i < nfds; i++) {
-            if (events[i].data.fd == ucsk_fd) {
-                nl_recvmsgs_default(ucsk);
-            } else if (events[i].data.fd == mcsk_fd) {
-                nl_recvmsgs_default(mcsk);
-            } else if (events[i].data.fd == timer_fd) {
-                send_keepalive_msg(ucsk, fam);
-            } else if (events[i].data.fd == route_event_fd) {
-                nl_recvmsgs_default(route_event_sock);
+            if (events[i].data.fd == sys->ucsk_fd) {
+                nl_recvmsgs_default(sys->ucsk);
+            } else if (events[i].data.fd == sys->mcsk_fd) {
+                nl_recvmsgs_default(sys->mcsk);
+            } else if (events[i].data.fd == sys->timer_fd) {
+                send_keepalive_msg(sys->ucsk, fam);
+            } else if (events[i].data.fd == sys->route_event_fd) {
+                nl_recvmsgs_default(sys->route_event_sock);
             } else {
                prerr("unknown event %d\n", events[i].data.fd);
             }
@@ -908,9 +1012,9 @@ int switchdev_netlink_main(void)
 
     ret = 0;
 out:
-    disconn(ucsk);
-    disconn(mcsk);
-    disconn(route_event_sock);
+    disconn(sys->ucsk);
+    disconn(sys->mcsk);
+    disconn(sys->route_event_sock);
     return ret;
 }
 
