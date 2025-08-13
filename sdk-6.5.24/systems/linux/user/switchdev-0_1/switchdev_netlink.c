@@ -102,8 +102,10 @@ int switchdev_ops_send_and_recv(switch_service_t *sys, struct nl_msg *msg,
 
     ret = nl_send_auto(sys->generic_sock, msg);
     nlmsg_free(msg);
-    if (ret < 0)
+    if (ret < 0) {
+        printf("ops_send_and_recv send_auto ret %d\n", ret);
         return ret;
+    }
 
     orig_cb = nl_socket_get_cb(sys->generic_sock);
     cb = nl_cb_clone(orig_cb);
@@ -132,6 +134,7 @@ int switchdev_ops_send_and_recv(switch_service_t *sys, struct nl_msg *msg,
         ret = nl_recvmsgs(sys->generic_sock, cb);
         if (ret)
         {
+            printf("ops_send_and_recv nl_recvmsgs ret %d  %s\n", ret, nl_geterror(ret));
             err = ret;
             goto put_cb;
         }
@@ -502,6 +505,8 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
         return(0);
     }
 
+    return 0;
+
     memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
     
     if (!is_del && tb[NDA_LLADDR]) {
@@ -536,6 +541,7 @@ static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
     uint8_t         *mac_addr  = (uint8_t *)arg;
 
 
+    printf("ipneigh_get_handler...\n");
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
     if (tb[NDA_LLADDR]) {
@@ -548,7 +554,7 @@ static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
     return (0);
 }
 
-static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
+static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t *mac_addr)
 {
     struct nl_msg    *msg;
     struct ndmsg      ndm;
@@ -560,26 +566,33 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
        return -1;
     }
 
+    memset(&ndm, 0, sizeof(ndm));
     ndm.ndm_family = family;
+    ndm.ndm_ifindex = ifindex;
 
     msg = nlmsg_alloc_simple(RTM_GETNEIGH,NLM_F_REQUEST);
-
     if (!msg) {
+	printf("ipneigh_get alloc msg failed \n");
         return -1;
     }
 
     err = nlmsg_append(msg, &ndm, sizeof(ndm), NLMSG_ALIGNTO);
-
-    if (!err) {
-        return -err;
+    if (err) {
+	printf("ipneigh_get append failed %d\n", err);
+        return err;
     }
 
     err = nla_put_u32(msg, NDA_DST, *addr);
-    if (err < 0) {
-    	return -err;
+    if (err) {
+	printf("ipneigh_get put addr failed %d addr 0x%x\n", err, *addr);
+    	return err;
     }    
 
-    switchdev_ops_send_and_recv(sys, msg, ipneigh_get_handler, mac_addr);
+    err = switchdev_ops_send_and_recv(sys, msg, ipneigh_get_handler, mac_addr);
+    if (err) {
+        printf("ipneigh_get ops failed %d addr 0x%x\n", err, *addr);
+	return err;
+    }
 
     printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
             *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
@@ -633,7 +646,7 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         /*          Get Neigh(l3 egress) for ipv4_gw                 */
         /*************************************************************/
         // 1. get MAC address from ip neigh
-        rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, mac_addr);
+        rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, ifindex, mac_addr);
 
         // if ip neigh does not exist, need to put fib into wait list
         if (rc) {
@@ -997,7 +1010,7 @@ int switchdev_netlink_main(void)
             } else if (events[i].data.fd == sys->mcsk_fd) {
                 nl_recvmsgs_default(sys->mcsk);
             } else if (events[i].data.fd == sys->timer_fd) {
-                send_keepalive_msg(sys->ucsk, fam);
+                //send_keepalive_msg(sys->ucsk, fam);
             } else if (events[i].data.fd == sys->route_event_fd) {
                 nl_recvmsgs_default(sys->route_event_sock);
             } else {
