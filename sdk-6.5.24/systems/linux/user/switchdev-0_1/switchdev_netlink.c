@@ -537,21 +537,22 @@ static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
     struct nlmsghdr *nlh = nlmsg_hdr(msg);
     struct ndmsg    *ndm = NLMSG_DATA(nlh);
     struct rtattr   *tb[NDA_MAX + 1] = {0};	    
-    int              len = 0;
+    int              len = nlh->nlmsg_len;
     uint8_t         *mac_addr  = (uint8_t *)arg;
 
 
-    printf("ipneigh_get_handler...\n");
+    //printf("ipneigh_get_handler...\n");
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
     if (tb[NDA_LLADDR]) {
         //TODO, add support for different lladdr types
-        memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
-        printf("ipneigh_get_handler %02x:%02x:%02x:%02x:%02x:%02x\n", 
-               mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
+        memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+        //printf("ipneigh_get_handler %02x:%02x:%02x:%02x:%02x:%02x\n", 
+        //       mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
+	return (0);
     }
 
-    return (0);
+    return (-1);
 }
 
 static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t *mac_addr)
@@ -594,8 +595,8 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t
 	return err;
     }
 
-    printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
-            *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
+    //printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
+    //        *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
 
     return 0;
 }
