@@ -21,7 +21,6 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/family.h>
 #include <netlink/route/link.h>
-#include <netlink/rtnetlink.h>
 #include <net/if.h>
 
 #include <sys/epoll.h>
@@ -530,8 +529,7 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
 
 static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
 {
-    int		         err = 0;
-	struct nlmsghdr *nlh = nlmsg_hdr(msg);
+    struct nlmsghdr *nlh = nlmsg_hdr(msg);
     struct ndmsg    *ndm = NLMSG_DATA(nlh);
     struct rtattr   *tb[NDA_MAX + 1] = {0};	    
     int              len = 0;
@@ -543,8 +541,8 @@ static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
     if (tb[NDA_LLADDR]) {
         //TODO, add support for different lladdr types
         memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
-        printf("ipneigh_get_handler addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
-               *addr, mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
+        printf("ipneigh_get_handler %02x:%02x:%02x:%02x:%02x:%02x\n", 
+               mac_addr[5],mac_addr[4], mac_addr[3],mac_addr[2], mac_addr[1],mac_addr[0]);
     }
 
     return (0);
@@ -556,8 +554,6 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
     struct ndmsg      ndm;
     switch_service_t *sys;
     int               err;
-    uint8_t           mac_addr[6];
-
 
     sys = system_get_instance();
     if (sys == NULL) {
@@ -566,22 +562,22 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint8_t *mac_addr)
 
     ndm.ndm_family = family;
 
-    msg = nl_msg_alloc_simple(RTM_GETNEIGH,NLM_F_REQUEST);
+    msg = nlmsg_alloc_simple(RTM_GETNEIGH,NLM_F_REQUEST);
 
     if (!msg) {
         return -1;
     }
 
-    ret = nlmsg_append(msg, &ndm, sizeof(ndm), NLMSG_ALIGNTO);
+    err = nlmsg_append(msg, &ndm, sizeof(ndm), NLMSG_ALIGNTO);
 
-    if (!ret) {
-        return ret;
+    if (!err) {
+        return -err;
     }
 
-    err = nla_put_u32(msg, NDA_DST, addr);
-	if (err < 0) {
-		return -err;
-	}    
+    err = nla_put_u32(msg, NDA_DST, *addr);
+    if (err < 0) {
+    	return -err;
+    }    
 
     switchdev_ops_send_and_recv(sys, msg, ipneigh_get_handler, mac_addr);
 
@@ -991,7 +987,7 @@ int switchdev_netlink_main(void)
     }    
     ev.events = EPOLLIN;
     ev.data.fd = sys->route_event_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sys->route_event_fd, &ev);
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->route_event_fd, &ev);
 
     while (1) {
         int nfds = epoll_wait(sys->epoll_fd, events, 10, -1);

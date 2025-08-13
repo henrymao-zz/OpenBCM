@@ -17,7 +17,7 @@ enum {
     SWITCHDEV_EVENT_KEEPALIVE,
     SWITCHDEV_EVENT_START,
     SWITCHDEV_EVENT_NETDEV,
-	SWITCHDEV_EVENT_PORT,
+    SWITCHDEV_EVENT_PORT,
 
     __SWITCHDEV_EVENT_MAX,
     SWITCHDEV_EVENT_MAX = __SWITCHDEV_EVENT_MAX - 1
@@ -25,34 +25,34 @@ enum {
 
 
 enum {
-	SWITCHDEV_A_NETDEV_EVENT_ID = 1,
+    SWITCHDEV_A_NETDEV_EVENT_ID = 1,
     SWITCHDEV_A_NETDEV_PORT,
-	SWITCHDEV_A_NETDEV_IF_NAME,
+    SWITCHDEV_A_NETDEV_IF_NAME,
 	
-	__SWITCHDEV_A_NETDEV_EVENT_MAX,
-	SWITCHDEV_A_NETDEV_EVENT_MAX = (__SWITCHDEV_A_NETDEV_EVENT_MAX - 1)
+    __SWITCHDEV_A_NETDEV_EVENT_MAX,
+    SWITCHDEV_A_NETDEV_EVENT_MAX = (__SWITCHDEV_A_NETDEV_EVENT_MAX - 1)
 };
 
 enum {
-	SWITCHDEV_A_KEEPALIVE = 1,
-	SWITCHDEV_A_START,
+    SWITCHDEV_A_KEEPALIVE = 1,
+    SWITCHDEV_A_START,
 
-	__SWITCHDEV_A_MAX,
-	SWITCHDEV_A_MAX = (__SWITCHDEV_A_MAX - 1)
+    __SWITCHDEV_A_MAX,
+    SWITCHDEV_A_MAX = (__SWITCHDEV_A_MAX - 1)
 };
 
 
 enum {
-	SWITCHDEV_A_PORT_EVENT_ID = 1,
-	SWITCHDEV_A_PORT_IF_FLAG,
-	SWITCHDEV_A_PORT_IF_PORT,
-	SWITCHDEV_A_PORT_IF_NAME,
+    SWITCHDEV_A_PORT_EVENT_ID = 1,
+    SWITCHDEV_A_PORT_IF_FLAG,
+    SWITCHDEV_A_PORT_IF_PORT,
+    SWITCHDEV_A_PORT_IF_NAME,
     SWITCHDEV_A_PORT_OBJ_ID,
-	SWITCHDEV_A_PORT_VLAN_ID,
+    SWITCHDEV_A_PORT_VLAN_ID,
     SWITCHDEV_A_PORT_VLAN_FLAGS,
 	
-	__SWITCHDEV_A_PORT_MAX,
-	SWITCHDEV_A_PORT_MAX = (__SWITCHDEV_A_PORT_MAX - 1)
+    __SWITCHDEV_A_PORT_MAX,
+    SWITCHDEV_A_PORT_MAX = (__SWITCHDEV_A_PORT_MAX - 1)
 };
 
 
@@ -151,13 +151,14 @@ typedef struct switch_service_s {
    struct  nl_sock *ucsk;
    struct  nl_sock *mcsk;
    struct  nl_sock *route_event_sock;
+   int     generic_sock_seq;
 
    int     ucsk_fd;
    int     mcsk_fd;
    int     route_event_fd;
    int     timer_fd;
    int     epoll_fd;   
-
+   int     generic_sock_fd;
 }switch_service_t;
 
 int switchdev_netlink_main(void);
