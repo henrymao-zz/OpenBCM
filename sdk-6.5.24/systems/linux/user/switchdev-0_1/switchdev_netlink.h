@@ -150,15 +150,15 @@ typedef struct local_interface_s {
     int  ifindex;                 // linux ifindex
     char name[IF_NAMESIZE+1]; 
 
-	int hw_port;                  // hardware port id
+    /* hardware information */
+    int hw_port;                  // hardware port id
+    int l3_intf;
 
-	int l3_intf;
-
-    LIST_ENTRY(local_interface_t) system_next;
+    LIST_ENTRY(local_interface_s) system_next;
 }local_interface_t;
 
 void local_if_finalize(local_interface_t* lif);
-
+local_interface_t* local_if_create(int ifindex, char* ifname, int hw_port);
 
 typedef struct switch_service_s {
    struct  nl_sock *generic_sock;
@@ -175,7 +175,7 @@ typedef struct switch_service_s {
    int     generic_sock_fd;
 
    //list of interfaces managed by switchdev module
-   local_interface_t *lif_list;
+   LIST_HEAD(lif_list, local_interface_s) lif_list;
 
 }switch_service_t;
 

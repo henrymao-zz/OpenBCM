@@ -11,6 +11,8 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <sys/queue.h>
+
 #include <netlink/socket.h>
 #include <netlink/netlink.h>
 #include <netlink/msg.h>
@@ -71,7 +73,7 @@
 
 local_interface_t* local_if_find_by_ifindex(int ifindex)
 {
-    switch_service_t* sys = NULL;
+    switch_service_t*  sys = NULL;
     local_interface_t* local_if = NULL;
 
     if ((sys = system_get_instance()) == NULL)
@@ -435,8 +437,8 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
         printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
-	    //Create l3table, and bind to l3 egress object
-	    //TODO, need to be more accurate
+        //Create l3table, and bind to l3 egress object
+        //TODO, need to be more accurate
         if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
             bcm_l3_host_t_init(&host_info);
             host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
@@ -542,7 +544,7 @@ void switchdev_event_handler_obj_input_newlink(struct nl_object *obj, void *arg)
     ifname = rtnl_link_get_name(link);
 
     printf("handle newlink for %d %s state %d\n", ifindex, ifname, op_state);
-    return 0;
+    return;
 }
 
 
@@ -749,11 +751,11 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         memcpy(egress_object.mac_addr, mac_addr, 6);
 
         rc = bcm_l3_egress_find(0, &egress_object, &object_id);
-        if (BCM_FAILURE(rv)) {
-            if (rv != BCM_E_NOT_FOUND) {
-            printf("Error finding egress object entry: %s\n",
-                    bcm_errmsg(rv));
-            return (0);
+        if (BCM_FAILURE(rc)) {
+            if (rc != BCM_E_NOT_FOUND) {
+                printf("Error finding egress object entry: %s\n",
+                        bcm_errmsg(rc));
+                return (0);
             }
             printf("Couldn't find entry\n");
             return (0);
@@ -917,26 +919,26 @@ static int send_start_msg(struct nl_sock *sk, int fam)
 /* Allocate netlink socket and connect to generic netlink */
 static int conn(struct nl_sock **sk)
 {
-	*sk = nl_socket_alloc();
-	if (!sk) {
-		return -ENOMEM;
-	}
-
-	return genl_connect(*sk);
+    *sk = nl_socket_alloc();
+    if (!sk) {
+    	return -ENOMEM;
+    }
+    
+    return genl_connect(*sk);
 }
 
 /* Disconnect and release socket */
 static void disconn(struct nl_sock *sk)
 {
-	nl_close(sk);
-	nl_socket_free(sk);
+    nl_close(sk);
+    nl_socket_free(sk);
 }
 
 /* Modify the callback for replies to handle all received messages */
 static inline int set_cb(struct nl_sock *sk)
 {
-	return nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM,
-				   message_handler, NULL);
+    return nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM,
+                               message_handler, NULL);
 }
 
 static void set_nonblocking(int fd) 

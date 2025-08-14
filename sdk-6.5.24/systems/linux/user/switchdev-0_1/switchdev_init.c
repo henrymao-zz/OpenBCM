@@ -4,6 +4,8 @@
 #include <string.h>
 #include <pty.h>
 #include <errno.h>
+#include <sys/queue.h>
+#include <net/if.h>
 
 #ifndef NO_SAL_APPL
 #include <sal/appl/sal.h>
@@ -488,6 +490,7 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
     bcm_l3_ingress_t         l3_ingress;
     bcm_l3_intf_t            l3_intf;
     bcm_error_t              rv = BCM_E_NONE;        
+    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
     /* L2 station */
     bcm_l2_station_t_init(&l2_station);
@@ -548,8 +551,9 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
 //load port_config.ini and create interfaces
 int knet_portconfig_init(int unit)
 {
-    bcm_knet_netif_t  netif;
-    bcm_knet_filter_t filter;    
+    bcm_knet_netif_t   netif;
+    bcm_knet_filter_t  filter;    
+    local_interface_t *local_if;
     FILE *fp = NULL;
     char  line[256];
     char *token;
@@ -612,11 +616,11 @@ int knet_portconfig_init(int unit)
         }    
 
         //initilize l3 intf in hardware
-        knet_portconfig_init(unit, netif.port, &l3_intf_id);
+        switchdev_l3_port_init(unit, netif.port, &l3_intf_id);
 
         //insert interface into list
         local_if = local_if_create(netif.id, netif.name, netif.port);
-        local_if.l3_intf = l3_intf_id;
+        local_if->l3_intf = l3_intf_id;
         printf("local if ifindex %d %s port %d l3_intf %d \n", netif.id, netif.name, netif.port, l3_intf_id);
     }
 
@@ -2016,8 +2020,8 @@ int switchdev_vlan_init(int unit)
     bcm_vlan_t               route_vlan = 4095;
     bcm_l3_intf_t            l3_intf;
     bcm_l3_egress_t          egress_object;    
-    bcm_if_t                 ingress_if_egr;
-    bcm_l3_ingress_t         l3_ingress;
+    //bcm_if_t                 ingress_if_egr;
+    //bcm_l3_ingress_t         l3_ingress;
     int                      station_id;
     bcm_l2_station_t         l2_station;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -2264,7 +2268,8 @@ switch_service_t* system_get_instance()
 /* System instance tear down */
 void system_finalize()
 {
-    static switch_service_t* sys = NULL;
+    static switch_service_t *sys = NULL;
+    local_interface_t       *local_if = NULL;
 
     if ((sys = system_get_instance()) == NULL )
         return;
