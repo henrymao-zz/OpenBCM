@@ -539,7 +539,8 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
     /* set port.l3_iif to ingress_if_egr */
     rv = bcm_port_control_set(unit, port, bcmPortControlL3Ingress, ingress_if_egr);
     if (BCM_FAILURE(rv)) {
-       printf("Perf: bcmPortControlL3Ingress failed: %s\n", bcm_errmsg(rv));
+       printf("l3_port_init bcmPortControlL3Ingress port %d if_egr %d failed: %s\n", 
+               port, ingress_if_egr, bcm_errmsg(rv));
        return rv;
     }
 

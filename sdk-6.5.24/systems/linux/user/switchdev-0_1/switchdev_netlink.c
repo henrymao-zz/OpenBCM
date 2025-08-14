@@ -694,17 +694,18 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t
 
 static int switchdv_handle_route_request(struct nlmsghdr *n)
 {
-    struct rtmsg  *rtm = NLMSG_DATA(n);
-    struct rtattr *tb[NDA_MAX + 1] = {0};	
-    int        len = n->nlmsg_len;
-    int        msgtype = n->nlmsg_type;
-    uint32_t   ipv4_dst = 0, ipv4_gw = 0;
-    uint32_t   ifindex;
-    //char       ifname[IF_NAMESIZE+1];
-    int        rc = 0;
-    uint8_t    mac_addr[6];
-    bcm_l3_egress_t   egress_object;
-    int               object_id = -1;
+    struct rtmsg      *rtm = NLMSG_DATA(n);
+    struct rtattr     *tb[NDA_MAX + 1] = {0};	
+    int                len = n->nlmsg_len;
+    int                msgtype = n->nlmsg_type;
+    uint32_t           ipv4_dst = 0, ipv4_gw = 0;
+    uint32_t           ifindex = 0;
+    char               ifname[IF_NAMESIZE+1];
+    int                rc = 0;
+    uint8_t            mac_addr[6];
+    bcm_l3_egress_t    egress_object;
+    int                object_id = -1;
+    local_interface_t *local_if = NULL;
 
     if (n->nlmsg_type == NLMSG_DONE)
     {
@@ -727,7 +728,19 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
 
         if (tb[RTA_OIF]) {
             memcpy(&ifindex, RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
-        }
+        } else {
+            printf("handle_route_request missing oif\n");
+	    return 0;
+	}
+
+	if_indextoname(ifindex, ifname);
+        local_if = local_if_find_by_ifindex(ifindex);
+
+	if (!local_if) {
+            printf("handle_route_request for port %d %s\n",ifindex, ifname);
+            return 0;
+	}
+
 
         if (msgtype == RTM_NEWROUTE) {
             printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
@@ -750,6 +763,9 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         // 2. get intf from l3 egress table
         bcm_l3_egress_t_init(&egress_object);
         memcpy(egress_object.mac_addr, mac_addr, 6);
+	egress_object.intf = local_if->l3_intf;
+	egress_object.port = local_if->hw_port;
+	egress_object.vlan = local_if->vlan;
 
         rc = bcm_l3_egress_find(0, &egress_object, &object_id);
         if (BCM_FAILURE(rc)) {
@@ -758,7 +774,8 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
                         bcm_errmsg(rc));
                 return (0);
             }
-            printf("Couldn't find l3 egress entry\n");
+            printf("Couldn't find l3 egress entry port %d %02x:%02x:%02x:%02x:%02x:%02x\n",
+                    egress_object.port, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             return (0);
         }
 
