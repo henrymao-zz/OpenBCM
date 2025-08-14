@@ -221,47 +221,6 @@ put_cb:
     return err;
 }
 
-
-static int handle_netdev_event(struct nl_msg *msg)
-{
-	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
-	struct nlattr	  *tb[SWITCHDEV_A_NETDEV_EVENT_MAX + 1];
-    int   err = 0;
-	int   event;
-	char *ifname;
-	int   port;
-
-    printf("netdev event received:\n");
-	/* Parse the attributes */
-	err = nla_parse(tb, SWITCHDEV_A_NETDEV_EVENT_MAX, genlmsg_attrdata(genlhdr, 0),
-			genlmsg_attrlen(genlhdr, 0), NULL);
-	if (err) {
-		prerr("unable to parse message: %s\n", strerror(-err));
-		return NL_SKIP;
-	}
-
-	event = nla_get_u32(tb[SWITCHDEV_A_NETDEV_EVENT_ID]);
-    port = nla_get_u32(tb[SWITCHDEV_A_NETDEV_PORT]);
-    ifname = nla_get_string(tb[SWITCHDEV_A_NETDEV_IF_NAME]);
-
-	printf("    interface name %s event %d port %d\n", ifname, event, port);
-
-	switch (event) {
-       case NETDEV_PRE_UP:
-          err = bcm_port_enable_set(0, port, TRUE);
-		  break;
-	   case NETDEV_DOWN:
-          err = bcm_port_enable_set(0, port, FALSE);
-		  break;
-	   case NETDEV_CHANGEUPPER:
-          break;
-	   default:
-	       break;
-
-	}
-	return err;
-}
-
 static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 {
     char *ifname;
@@ -418,19 +377,27 @@ extern bcm_if_t punt_l3_interface;
 
 void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
 {
-    struct nl_addr   *nl_addr;
-    uint32_t          ifindex;
-    struct rtnl_addr *addr;
-    char              ifname[IF_NAMESIZE+1];
-    uint32_t          ipv4_addr, *ipv6_addr;
-    uint8_t           prefixlen;
-    bcm_l3_host_t     host_info;
+    struct nl_addr    *nl_addr;
+    uint32_t           ifindex;
+    struct rtnl_addr  *addr;
+    char               ifname[IF_NAMESIZE+1];
+    uint32_t           ipv4_addr, *ipv6_addr;
+    uint8_t            prefixlen;
+    bcm_l3_host_t      host_info;
+    local_interface_t *local_if;
 
 
     addr = (struct rtnl_addr *)obj;
 
     ifindex = rtnl_addr_get_ifindex(addr);
     if_indextoname(ifindex, ifname);
+
+    local_if = local_if_find_by_ifindex(ifindex);
+    if(!local_if) {
+        printf("handle newaddr failed to find local if %d %s\n", ifindex, ifname);
+        return;
+    }
+
     nl_addr = rtnl_addr_get_local(addr);
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
@@ -441,14 +408,11 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
                 ifindex, ifname, ipv4_addr, prefixlen);
 
         //Create l3table, and bind to l3 egress object
-        //TODO, need to be more accurate
-        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
-            bcm_l3_host_t_init(&host_info);
-            host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
-			host_info.l3a_intf = punt_l3_interface;
-			host_info.l3a_lookup_class = 1;
-            bcm_l3_host_add(0, &host_info);
-        }
+        bcm_l3_host_t_init(&host_info);
+        host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
+		host_info.l3a_intf = punt_l3_interface;
+		host_info.l3a_lookup_class = 1;
+        bcm_l3_host_add(0, &host_info);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
@@ -456,32 +420,38 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
         printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
                 ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
-        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
-            bcm_l3_host_t_init(&host_info);
-            host_info.l3a_flags =  BCM_L3_IP6;
-            host_info.l3a_intf = punt_l3_interface; 
-            host_info.l3a_lookup_class = 1;
-            memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
-            bcm_l3_host_add(0, &host_info);
-        }
+        bcm_l3_host_t_init(&host_info);
+        host_info.l3a_flags =  BCM_L3_IP6;
+        host_info.l3a_intf = punt_l3_interface; 
+        host_info.l3a_lookup_class = 1;
+        memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
+        bcm_l3_host_add(0, &host_info);
     }
 }
 
 void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
 {
-    struct nl_addr   *nl_addr;
-    uint32_t          ifindex;
-    struct rtnl_addr *addr;
-    char              ifname[IF_NAMESIZE+1];
-    uint32_t          ipv4_addr, *ipv6_addr;
-    uint8_t           prefixlen;
-    bcm_l3_host_t     host_info;
+    struct nl_addr    *nl_addr;
+    uint32_t           ifindex;
+    struct rtnl_addr  *addr;
+    char               ifname[IF_NAMESIZE+1];
+    uint32_t           ipv4_addr, *ipv6_addr;
+    uint8_t            prefixlen;
+    bcm_l3_host_t      host_info;
+    local_interface_t *local_if;
 
 
     addr = (struct rtnl_addr *)obj;
 
     ifindex = rtnl_addr_get_ifindex(addr);
     if_indextoname(ifindex, ifname);
+
+    local_if = local_if_find_by_ifindex(ifindex);
+    if(!local_if) {
+        printf("handle deladdr failed to find local if %d %s\n", ifindex, ifname);
+        return;
+    }
+
     nl_addr = rtnl_addr_get_local(addr);
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
@@ -491,15 +461,11 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
         printf("ipv4 l3 host del: index %d %s address 0x%x prefix %d\n",
                 ifindex, ifname, ipv4_addr, prefixlen);
 
-        //TODO, need to be more accurate
-        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
-			bcm_l3_host_t_init(&host_info);
-            host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
-			host_info.l3a_intf = punt_l3_interface;
-			host_info.l3a_lookup_class = 1;
-            bcm_l3_host_delete(0, &host_info);
-	    }
-
+		bcm_l3_host_t_init(&host_info);
+        host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
+		host_info.l3a_intf = punt_l3_interface;
+		host_info.l3a_lookup_class = 1;
+        bcm_l3_host_delete(0, &host_info);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         prefixlen = nl_addr_get_prefixlen(nl_addr);
@@ -507,15 +473,12 @@ void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
         printf("ipv6 l3 host del: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
                 ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
-        if (!strncmp(ifname, "Ethernet", strlen("Ethernet"))) {
-            bcm_l3_host_t_init(&host_info);
-            host_info.l3a_flags =  BCM_L3_IP6;
-            host_info.l3a_intf = punt_l3_interface; 
-            host_info.l3a_lookup_class = 1;
-            memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
-            bcm_l3_host_delete(0, &host_info);
-        }
-	
+        bcm_l3_host_t_init(&host_info);
+        host_info.l3a_flags =  BCM_L3_IP6;
+        host_info.l3a_intf = punt_l3_interface; 
+        host_info.l3a_lookup_class = 1;
+        memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
+        bcm_l3_host_delete(0, &host_info);
     }
 }
 
@@ -537,16 +500,34 @@ void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
 
 void switchdev_event_handler_obj_input_newlink(struct nl_object *obj, void *arg)
 {
-    struct rtnl_link *link = (struct rtnl_link *)obj;
-    uint32_t ifindex = 0;
-    char    *ifname;
-    int      op_state = 0;
+    struct rtnl_link  *link = (struct rtnl_link *)obj;
+    uint32_t           ifindex = 0;
+    char              *ifname;
+    int                op_state = 0;
+    int                link_flag = 0;
+    local_interface_t *local_if;
+    
 
-    ifindex = rtnl_link_get_ifindex(link);
-    op_state = rtnl_link_get_operstate(link);
-    ifname = rtnl_link_get_name(link);
+    ifindex    = rtnl_link_get_ifindex(link);
+    op_state   = rtnl_link_get_operstate(link);
+    ifname     = rtnl_link_get_name(link);
+    link_flag  = rtnl_link_get_flags(link);
 
     printf("handle newlink for %d %s state %d\n", ifindex, ifname, op_state);
+
+    local_if = local_if_find_by_ifindex(ifindex);
+    if(!local_if) {
+        printf("handle deladdr failed to find local if %d %s\n", ifindex, ifname);
+        return;
+    }
+
+    //update 
+    if (link_flag & IFF_LOWER_UP) {
+        bcm_port_enable_set(0, port, TRUE);
+    } else if (!(link_flag & IFF_LOWER_UP)) {
+        bcm_port_enable_set(0, port, FALSE);
+    }
+
     return;
 }
 
@@ -839,10 +820,6 @@ static int message_handler(struct nl_msg *msg, void *arg)
 	struct genlmsghdr *genlhdr = nlmsg_data(nlmsg_hdr(msg));
 	
 	switch (genlhdr->cmd) {
-        case SWITCHDEV_EVENT_NETDEV:
-	       err = handle_netdev_event(msg);
-		   break;
-
 	    case SWITCHDEV_EVENT_PORT:
 		   err = handle_switchdev_port_event(msg);
 		   break;

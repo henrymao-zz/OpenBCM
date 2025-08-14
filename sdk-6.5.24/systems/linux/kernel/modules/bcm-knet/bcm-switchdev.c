@@ -159,64 +159,6 @@ out:
 
 extern int bcm_knet_get_port(struct net_device *dev);
 
-static int switchdev_netdev_event_send(uint32_t event, struct net_device *dev)
-{
-	struct genlmsghdr *nlh;
-	struct sk_buff *skb;    
-	int    ret = -EINVAL;
-    int    port;
-
-	if (!switchdev_u_pid) {
-        printk("switchdev_netdev_event_send no userspace daemon connected\n");
-		return ret;
-    }
-
-    port = bcm_knet_get_port(dev);
-
-    if (port < 0 ) {
-       printk("switchdev_netdev_event_send invalid port %s %d", dev->name, port);
-       return ret;
-    } 
-
-	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
-	if (!skb)
-		return -ENOMEM;
-
-	nlh = genlmsg_put(skb, switchdev_u_pid, 0, &switchdev_genl_family, 0, SWITCHDEV_EVENT_NETDEV);
-	if (!nlh)
-		goto err_cancel_msg;
-
-	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_EVENT_ID, event);
-	if (ret) {
-		goto out;
-	}
-
-	ret = nla_put_u32(skb, SWITCHDEV_A_NETDEV_PORT, port);
-	if (ret) {
-		goto out;
-	}
-
-    ret = nla_put_string(skb, SWITCHDEV_A_NETDEV_IF_NAME, dev->name);
-	if (ret) {
-		goto out;
-	}
-
-	genlmsg_end(skb, nlh);
-	ret = genlmsg_unicast(switchdev_net, skb, switchdev_u_pid);
-	if (!ret) {
-        printk("switchdev_netdev_event_send success\n");
-		//switchdev_ipc_update_last_active();
-    } else {
-        printk("switchdev_netdev_event_send failed %d\n", ret);
-    }
-	return ret;
-
-err_cancel_msg:
-    genlmsg_cancel(skb, nlh);
-out:
-	nlmsg_free(skb);
-	return ret;
-}
 
 static int handle_switchdev_keepalive(struct sk_buff *skb, struct genl_info *info)
 {
@@ -460,7 +402,7 @@ static int switchdev_port_event_send(unsigned long event,
     int    port = 0;
 
 	if (!switchdev_u_pid) {
-        printk("switchdev_netdev_event_send no userspace daemon connected\n");
+        printk("switchdev_port_event_send no userspace daemon connected\n");
 		return ret;
     }
 
@@ -468,7 +410,7 @@ static int switchdev_port_event_send(unsigned long event,
         port = bcm_knet_get_port(dev);
 
         if (port < 0 ) {
-            printk("switchdev_netdev_event_send invalid port %s %d", dev->name, port);
+            printk("switchdev_port_event_send invalid port %s %d", dev->name, port);
             return ret;
         }
     } 
@@ -535,10 +477,10 @@ static int switchdev_port_event_send(unsigned long event,
 	genlmsg_end(skb, nlh);
 	ret = genlmsg_unicast(switchdev_net, skb, switchdev_u_pid);
 	if (!ret) {
-        printk("switchdev_netdev_event_send success\n");
+        printk("switchdev_port_event_send success\n");
 		//switchdev_ipc_update_last_active();
     } else {
-        printk("switchdev_netdev_event_send failed %d\n", ret);
+        printk("switchdev_port_event_send failed %d\n", ret);
     }
 	return ret;
 
@@ -651,22 +593,6 @@ static int bcm_switchdev_blk_event(struct notifier_block *unused,
     return notifier_from_errno(err);
 }
 
-static int bcm_netdevice_event(struct notifier_block *unused,
-    unsigned long event, void *ptr)
-{
-    struct net_device *dev = netdev_notifier_info_to_dev(ptr);
-    int err = 0;
-
-    if (!bkn_port_dev_check(dev))
-        return 0;
-
-    printk("bcm_netdevice_event %s event = %ld\n", dev->name, event);
-
-    switchdev_netdev_event_send(event, dev);
-
-    return err;
-}
-
 /* Called with rcu_read_lock() */
 static int bcm_router_fib_event(struct notifier_block *nb,
 				     unsigned long event, void *ptr)
@@ -725,10 +651,10 @@ static int bcm_switchdev_handler_init(struct bcm_switchdev *swdev)
     int err;
 
 
-    swdev->netdev_nb.notifier_call = bcm_netdevice_event;
-    err = register_netdevice_notifier(&swdev->netdev_nb);
-    if (err)
-        goto err_register_netdev_notifier;
+    //swdev->netdev_nb.notifier_call = bcm_netdevice_event;
+    //err = register_netdevice_notifier(&swdev->netdev_nb);
+    //if (err)
+    //    goto err_register_netdev_notifier;
 
     swdev->fib_nb.notifier_call = bcm_router_fib_event;
     err = register_fib_notifier(&init_net, &swdev->fib_nb, NULL, NULL);
@@ -757,9 +683,9 @@ err_register_swdev_notifier:
     unregister_fib_notifier(&init_net, &swdev->fib_nb);    
 err_register_fib_notifier:
     printk("bcm_switchdev_handler_init fib failed %d\n", err);
-    unregister_switchdev_notifier(&swdev->netdev_nb);    
-err_register_netdev_notifier:
-    printk("bcm_switchdev_handler_init netdev failed %d\n", err);
+    //unregister_switchdev_notifier(&swdev->netdev_nb);    
+//err_register_netdev_notifier:
+//    printk("bcm_switchdev_handler_init netdev failed %d\n", err);
     destroy_workqueue(swdev_wq);
     return err;
 }

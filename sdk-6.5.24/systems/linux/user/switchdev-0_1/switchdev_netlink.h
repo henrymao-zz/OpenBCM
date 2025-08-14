@@ -159,6 +159,7 @@ typedef struct local_interface_s {
 
 void local_if_finalize(local_interface_t* lif);
 local_interface_t* local_if_create(char* ifname, int hw_port);
+local_interface_t* local_if_find_by_ifindex(int ifindex);
 
 typedef struct switch_service_s {
    struct  nl_sock *generic_sock;
