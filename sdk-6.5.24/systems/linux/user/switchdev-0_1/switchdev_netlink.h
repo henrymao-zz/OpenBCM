@@ -146,6 +146,20 @@ enum switchdev_obj_id {
 	SWITCHDEV_OBJ_ID_IN_STATE_MRP,
 };
 
+typedef struct local_interface_s {
+    int  ifindex;                 // linux ifindex
+    char name[IF_NAMESIZE+1]; 
+
+	int hw_port;                  // hardware port id
+
+	int l3_intf;
+
+    LIST_ENTRY(local_interface_t) system_next;
+}local_interface_t;
+
+void local_if_finalize(local_interface_t* lif);
+
+
 typedef struct switch_service_s {
    struct  nl_sock *generic_sock;
    struct  nl_sock *ucsk;
@@ -160,7 +174,9 @@ typedef struct switch_service_s {
    int     epoll_fd;   
    int     generic_sock_fd;
 
-   
+   //list of interfaces managed by switchdev module
+   local_interface_t *lif_list;
+
 }switch_service_t;
 
 int switchdev_netlink_main(void);

@@ -480,15 +480,81 @@ _sysconf_attach( int unit )
 //TODO, need to read from eeprom
 static bcm_mac_t system_mac = {0x20, 0x88, 0x10, 0x58, 0xf9, 0x80};
 
+static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
+{
+    bcm_l2_station_t         l2_station;
+    int                      station_id;
+    bcm_if_t                 ingress_if_egr;
+    bcm_l3_ingress_t         l3_ingress;
+    bcm_l3_intf_t            l3_intf;
+    bcm_error_t              rv = BCM_E_NONE;        
+
+    /* L2 station */
+    bcm_l2_station_t_init(&l2_station);
+    memcpy(l2_station.dst_mac, system_mac, 6);
+    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+    l2_station.vlan         = 4095;
+    l2_station.vlan_mask    = 0xfff;
+    l2_station.src_port     = port;
+    l2_station.src_port_mask = 0x00ff;
+
+    rv = bcm_l2_station_add(unit, &station_id, &l2_station);
+	if (BCM_E_NONE != rv) {
+			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
+			return rv;
+	}
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+    l3_intf.l3a_vid = 4095;
+    l3_intf.l3a_vrf = 0;
+    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+    rv = bcm_l3_intf_create(unit, &l3_intf);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+    
+    /*
+     * Use the same ID to allocate the ingress interface (L3_IIF)
+     * (This is really not needed for L3MPLS init, since we only need
+     *  to use EGR_L3_INTF to create the tunnel)
+     */
+    ingress_if_egr = l3_intf.l3a_intf_id;
+
+    bcm_l3_ingress_t_init(&l3_ingress);
+    l3_ingress.flags = BCM_L3_INGRESS_REPLACE;
+    l3_ingress.vrf  = 0;
+    l3_ingress.ipmc_intf_id  = ingress_if_egr;
+    rv = bcm_l3_ingress_create(unit, &l3_ingress, &ingress_if_egr);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 ingress intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+
+    /* set port.l3_iif to ingress_if_egr */
+    rv = bcm_port_control_set(unit, port, bcmPortControlL3Ingress, ingress_if_egr);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: bcmPortControlL3Ingress failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+
+    *l3_intf_id = l3_intf.l3a_intf_id;
+
+    return rv;
+}
+
 //load port_config.ini and create interfaces
 int knet_portconfig_init(int unit)
 {
-    bcm_knet_netif_t netif;
+    bcm_knet_netif_t  netif;
     bcm_knet_filter_t filter;    
     FILE *fp = NULL;
-    char line[256];
+    char  line[256];
     char *token;
-    int rv;
+    int   rv;
+    int   l3_intf_id;
 
     /* open file, allocate buffer and read file into buffer */
     fp = sal_fopen("/etc/bcm/port_config.ini", "rb");
@@ -544,6 +610,14 @@ int knet_portconfig_init(int unit)
         if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
             printf("Error creating packet filter: %d\n", rv);
         }    
+
+        //initilize l3 intf in hardware
+        knet_portconfig_init(unit, netif.port, &l3_intf_id);
+
+        //insert interface into list
+        local_if = local_if_create(netif.id, netif.name, netif.port);
+        local_if.l3_intf = l3_intf_id;
+        printf("local if ifindex %d %s port %d l3_intf %d \n", netif.id, netif.name, netif.port, l3_intf_id);
     }
 
     fclose(fp);
@@ -2020,63 +2094,6 @@ int switchdev_vlan_init(int unit)
         return rv;
     }    
 
-   
-
-    //Create L3 Intf for ports
-    BCM_PBMP_ITER(port_config.port, port) {
-        /* L2 station */
-        bcm_l2_station_t_init(&l2_station);
-        memcpy(l2_station.dst_mac, system_mac, 6);
-        memcpy(l2_station.dst_mac_mask, mac_mask, 6);
-        l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
-        l2_station.vlan         = 4095;
-        l2_station.vlan_mask    = 0xfff;
-        l2_station.src_port     = port;
-        l2_station.src_port_mask = 0x00ff;
-
-        rv = bcm_l2_station_add(unit, &station_id, &l2_station);
-	    if (BCM_E_NONE != rv) {
-	    		printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
-	    		return rv;
-	    }
-        /* L3 Interface */
-        bcm_l3_intf_t_init(&l3_intf);
-        memcpy(l3_intf.l3a_mac_addr, system_mac,6);
-        l3_intf.l3a_vid = 4095;
-        l3_intf.l3a_vrf = 0;
-        //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
-        rv = bcm_l3_intf_create(unit, &l3_intf);
-        if (BCM_FAILURE(rv)) {
-           printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
-           return rv;
-        }
-        
-        /*
-         * Use the same ID to allocate the ingress interface (L3_IIF)
-         * (This is really not needed for L3MPLS init, since we only need
-         *  to use EGR_L3_INTF to create the tunnel)
-         */
-        ingress_if_egr = l3_intf.l3a_intf_id;
-
-        bcm_l3_ingress_t_init(&l3_ingress);
-        l3_ingress.flags = BCM_L3_INGRESS_REPLACE;
-        l3_ingress.vrf  = 0;
-        l3_ingress.ipmc_intf_id  = ingress_if_egr;
-        rv = bcm_l3_ingress_create(unit, &l3_ingress, &ingress_if_egr);
-        if (BCM_FAILURE(rv)) {
-           printf("Perf: Create L3 ingress intf failed: %s\n", bcm_errmsg(rv));
-           return rv;
-        }
-
-        /* set port.l3_iif to ingress_if_egr */
-        rv = bcm_port_control_set(unit, port, bcmPortControlL3Ingress, ingress_if_egr);
-        if (BCM_FAILURE(rv)) {
-           printf("Perf: bcmPortControlL3Ingress failed: %s\n", bcm_errmsg(rv));
-           return rv;
-        }
-    }
-
-
     /* L3 Egress - to host CPU*/
     bcm_l3_egress_t_init(&egress_object);
     //egress_object.intf = l3_intf.l3a_intf_id;
@@ -2090,8 +2107,6 @@ int switchdev_vlan_init(int unit)
         printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
         return rv;
     }    
-
-
 
     return rv;
 }
@@ -2221,6 +2236,8 @@ static void switchdev_system_init(switch_service_t* sys)
 
     memset(sys, 0, sizeof(switch_service_t));
 
+    LIST_INIT(&(sys->lif_list));
+
     return;
 }
 
@@ -2241,6 +2258,24 @@ switch_service_t* system_get_instance()
     }
 
     return sys;
+}
+
+
+/* System instance tear down */
+void system_finalize()
+{
+    static switch_service_t* sys = NULL;
+
+    if ((sys = system_get_instance()) == NULL )
+        return;
+
+    /* Release all port objects */
+    while (!LIST_EMPTY(&(sys->lif_list)))
+    {
+        local_if = LIST_FIRST(&(sys->lif_list));
+        LIST_REMOVE(local_if, system_next);
+        //local_if_finalize(local_if);
+    }
 }
 
 static void
@@ -2565,6 +2600,8 @@ int main( int argc, char *argv[] )
 
         break;
     }
+
+    system_finalize();
 
     linux_bde_destroy( bde );
     return 0;
