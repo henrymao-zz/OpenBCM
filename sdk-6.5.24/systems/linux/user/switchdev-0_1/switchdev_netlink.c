@@ -459,6 +459,24 @@ void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
     }
 }
 
+
+void switchdev_event_handler_obj_input_newlink(struct nl_object *obj, void *arg)
+{
+    struct rtnl_link *link = (struct rtnl_link *)obj;
+    uint32_t ifindex = 0;
+    char    *ifname;
+    int      op_state = 0;
+
+    ifindex = rtnl_link_get_ifindex(link);
+    op_state = rtnl_link_get_operstate(link);
+    ifname = rtnl_link_get_name(link);
+
+    printf("handle newlink for %d %s state %d\n", ifindex, ifname, op_state);
+    return 0;
+}
+
+
+
 static int switchdv_handle_neigh_request(struct nlmsghdr *n)
 {
     struct ndmsg  *ndm = NLMSG_DATA(n);
@@ -612,6 +630,8 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
     //char       ifname[IF_NAMESIZE+1];
     int        rc = 0;
     uint8_t    mac_addr[6];
+    bcm_l3_egress_t   egress_object;
+    int               object_id = -1;
 
     if (n->nlmsg_type == NLMSG_DONE)
     {
@@ -655,6 +675,19 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
             return 0;
         }
         // 2. get intf from l3 egress table
+        bcm_l3_egress_t_init(&egress_object);
+        memcpy(egress_object.mac_addr, mac_addr, 6);
+
+        rc = bcm_l3_egress_find(0, &egress_object, &object_id);
+        if (BCM_FAILURE(rv)) {
+            if (rv != BCM_E_NOT_FOUND) {
+            printf("Error finding egress object entry: %s\n",
+                    bcm_errmsg(rv));
+            return (0);
+            }
+            printf("Couldn't find entry\n");
+            return (0);
+        }
 
         // l3 egress should have been created, but try to recreate
         
@@ -683,6 +716,10 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
     switch (nlh->nlmsg_type)
     {
         case RTM_NEWLINK:
+            if (nl_msg_parse(msg, &switchdev_event_handler_obj_input_newlink, NULL) < 0) {
+                printf("Unknown message type.");
+			}
+            break;
             break;
 
         case RTM_DELLINK:
