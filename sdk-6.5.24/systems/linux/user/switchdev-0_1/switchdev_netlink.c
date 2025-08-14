@@ -523,9 +523,9 @@ void switchdev_event_handler_obj_input_newlink(struct nl_object *obj, void *arg)
 
     //update 
     if (link_flag & IFF_LOWER_UP) {
-        bcm_port_enable_set(0, port, TRUE);
+        bcm_port_enable_set(0, local_if->hw_port, TRUE);
     } else if (!(link_flag & IFF_LOWER_UP)) {
-        bcm_port_enable_set(0, port, FALSE);
+        bcm_port_enable_set(0, local_if->hw_port, FALSE);
     }
 
     return;

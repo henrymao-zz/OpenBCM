@@ -594,7 +594,7 @@ int knet_portconfig_init(int unit)
         if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
             printf("Error creating network interface:%s index %d rv %d\n",netif.name, netif.port, rv );
         } else {
-            printf("Creating Interface index %d %s index %d\n",netif.id, netif.name, netif.port);
+            printf("Creating Interface %s index %d\n",netif.name, netif.port);
 	}
 
         //Create filter for KNET interface

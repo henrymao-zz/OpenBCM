@@ -750,7 +750,7 @@ int bcm_switchdev_uninit(void)
 {
     genetlink_exit();
 
-    unregister_netdevice_notifier(&swdev->netdev_nb);
+    //unregister_netdevice_notifier(&swdev->netdev_nb);
     unregister_switchdev_notifier(&swdev->swdev_nb);
     unregister_switchdev_blocking_notifier(&swdev->swdev_nb_blk);
 
