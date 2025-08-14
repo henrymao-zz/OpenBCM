@@ -153,6 +153,7 @@ typedef struct local_interface_s {
     /* hardware information */
     int hw_port;                  // hardware port id
     int l3_intf;
+    int vlan;                     // should always be 4095 for routed port
 
     LIST_ENTRY(local_interface_s) system_next;
 }local_interface_t;

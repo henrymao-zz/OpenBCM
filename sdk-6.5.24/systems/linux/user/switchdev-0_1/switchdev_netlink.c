@@ -118,6 +118,7 @@ local_interface_t* local_if_create(char* ifname, int hw_port)
     local_if->ifindex = ifindex;
     local_if->hw_port = hw_port;
     local_if->l3_intf = -1;
+    local_if->vlan    = 4095;
 
     if (ifname)
         snprintf(local_if->name, IF_NAMESIZE, "%s", ifname);
@@ -540,6 +541,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
     int        msgtype = n->nlmsg_type;
     uint8_t    mac_addr[6];
     uint32_t   ipv4_addr;
+    int        rc = 0;
     char       ifname[IF_NAMESIZE+1];
     local_interface_t *local_if;
 
@@ -596,8 +598,20 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
 
         //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
         if (msgtype != RTM_DELNEIGH) { 
-            //add
+            //add, create l3 egress object
+            bcm_l3_egress_t  l3_egr;
+            int              egr_if;
 
+            bcm_l3_egress_t_init(&l3_egr);
+            l3_egr.intf = local_if->l3_intf;
+            l3_egr.port = local_if->hw_port;
+            l3_egr.vlan = local_if->vlan;      //should always be 4095
+            memcpy(l3_egr.mac_addr, mac_addr, 6);
+            rc = bcm_l3_egress_create(0, 0, &l3_egr, &egr_if); // may need to save egr_if
+            printf("bcm_l3_egress create l3_intf %d port %d vlan %d  ret %d\n",
+                   l3_egr.intf, l3_egr.port, l3_egr.vlan, rc);
+
+            return rc;
         } else {
             //del
 
@@ -606,7 +620,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
     }
 
-    return (0);
+    return (rc);
 }
 
 static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
@@ -744,7 +758,7 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
                         bcm_errmsg(rc));
                 return (0);
             }
-            printf("Couldn't find entry\n");
+            printf("Couldn't find l3 egress entry\n");
             return (0);
         }
 
