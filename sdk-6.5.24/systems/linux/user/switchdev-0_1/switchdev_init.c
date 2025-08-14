@@ -591,10 +591,11 @@ int knet_portconfig_init(int unit)
         token = strtok (NULL, " "); //index
         netif.port = atoi(token);
 
-        printf("Creating Interface %s index %d\n",netif.name, netif.port);
         if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
-            printf("Error creating network interface: %d\n",rv );
-        }
+            printf("Error creating network interface:%s index %d rv %d\n",netif.name, netif.port, rv );
+        } else {
+            printf("Creating Interface index %d %s index %d\n",netif.id, netif.name, netif.port);
+	}
 
         //Create filter for KNET interface
         bcm_knet_filter_t_init(&filter);
@@ -619,9 +620,10 @@ int knet_portconfig_init(int unit)
         switchdev_l3_port_init(unit, netif.port, &l3_intf_id);
 
         //insert interface into list
-        local_if = local_if_create(netif.id, netif.name, netif.port);
+        local_if = local_if_create(netif.name, netif.port);
         local_if->l3_intf = l3_intf_id;
-        printf("local if ifindex %d %s port %d l3_intf %d \n", netif.id, netif.name, netif.port, l3_intf_id);
+        //printf("local if ifindex %d %s port %d l3_intf %d \n", 
+        //       local_if->ifindex, local_if->name, local_if->hw_port, local_if->l3_intf);
     }
 
     fclose(fp);

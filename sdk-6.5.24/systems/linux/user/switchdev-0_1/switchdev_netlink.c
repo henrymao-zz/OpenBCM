@@ -89,17 +89,20 @@ local_interface_t* local_if_find_by_ifindex(int ifindex)
 }
 
 
-local_interface_t* local_if_create(int ifindex, char* ifname, int hw_port)
+local_interface_t* local_if_create(char* ifname, int hw_port)
 {
-    switch_service_t* sys = NULL;
-    local_interface_t* local_if = NULL;
+    switch_service_t   *sys = NULL;
+    local_interface_t  *local_if = NULL;
+    int                 ifindex; 
 
     if (!ifname)
         return NULL;
 
     if (!(sys = system_get_instance()))
         return NULL;
-
+   
+    ifindex = if_nametoindex(ifname);
+   
     if (ifindex > 0) {
         if ((local_if = local_if_find_by_ifindex(ifindex)))
             return local_if;
