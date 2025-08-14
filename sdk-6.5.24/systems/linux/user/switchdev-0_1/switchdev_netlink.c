@@ -375,7 +375,7 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 
 extern bcm_if_t punt_l3_interface;
 
-void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
+void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
 {
     struct nl_addr    *nl_addr;
     uint32_t           ifindex;
@@ -429,7 +429,7 @@ void switchdev_event_handler_obj_input_newaddr(struct nl_object *obj, void *arg)
     }
 }
 
-void switchdev_event_handler_obj_input_deladdr(struct nl_object *obj, void *arg)
+void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
 {
     struct nl_addr    *nl_addr;
     uint32_t           ifindex;
@@ -498,7 +498,7 @@ void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
 }
 
 
-void switchdev_event_handler_obj_input_newlink(struct nl_object *obj, void *arg)
+void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
 {
     struct rtnl_link  *link = (struct rtnl_link *)obj;
     uint32_t           ifindex = 0;
@@ -531,9 +531,7 @@ void switchdev_event_handler_obj_input_newlink(struct nl_object *obj, void *arg)
     return;
 }
 
-
-
-static int switchdv_handle_neigh_request(struct nlmsghdr *n)
+static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
 {
     struct ndmsg  *ndm = NLMSG_DATA(n);
     struct rtattr *tb[NDA_MAX + 1] = {0};	
@@ -543,10 +541,10 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
     uint8_t    mac_addr[6];
     uint32_t   ipv4_addr;
     char       ifname[IF_NAMESIZE+1];
+    local_interface_t *local_if;
 
 
-    if (n->nlmsg_type == NLMSG_DONE)
-    {
+    if (n->nlmsg_type == NLMSG_DONE) {
         return 0;
     }
 
@@ -560,11 +558,8 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
         || ndm->ndm_state == NUD_FAILED
         || ndm->ndm_state == NUD_NOARP
         || ndm->ndm_state == NUD_PERMANENT
-        || ndm->ndm_state == NUD_NONE)
-    {
-        if ((ndm->ndm_state == NUD_FAILED)
-                || (ndm->ndm_state == NUD_INCOMPLETE))
-        {
+        || ndm->ndm_state == NUD_NONE) {
+        if ((ndm->ndm_state == NUD_FAILED) || (ndm->ndm_state == NUD_INCOMPLETE)) {
             is_del = 1;
             msgtype = RTM_DELNEIGH;
         }
@@ -579,27 +574,35 @@ static int switchdv_handle_neigh_request(struct nlmsghdr *n)
         return(0);
     }
 
-    return 0;
+    if_indextoname(ndm->ndm_ifindex, ifname);
+    printf("handle neigh msg %d if_index %d %s\n", msgtype, ndm->ndm_ifindex, ifname);
 
-    memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
-    
-    if (!is_del && tb[NDA_LLADDR]) {
-        memcpy(&mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+    local_if = local_if_find_by_ifindex(ndm->ndm_ifindex);
+    if (!local_if) {
+        return 0;
     }
     
-    if_indextoname(ndm->ndm_ifindex, ifname);
-    printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
-           msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
-	   mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);
 
     if (ndm->ndm_family == AF_INET)
     {
+        memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
+        if (!is_del && tb[NDA_LLADDR]) {
+            memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+        }
+    
+        printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
+               msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
+	           mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);        
+
         //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
+        if (msgtype != RTM_DELNEIGH) { 
+            //add
 
-    }
+        } else {
+            //del
 
-    if (ndm->ndm_family == AF_INET6)
-    {
+        }
+    } else if (ndm->ndm_family == AF_INET6) {
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
     }
 
@@ -666,7 +669,7 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t
     err = switchdev_ops_send_and_recv(sys, msg, ipneigh_get_handler, mac_addr);
     if (err) {
         printf("ipneigh_get ops failed %d addr 0x%x\n", err, *addr);
-	return err;
+        return err;
     }
 
     //printf("ipneigh_get addr 0x%x %02x:%02x:%02x:%02x:%02x:%02x\n", 
@@ -772,10 +775,9 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
     switch (nlh->nlmsg_type)
     {
         case RTM_NEWLINK:
-            if (nl_msg_parse(msg, &switchdev_event_handler_obj_input_newlink, NULL) < 0) {
+            if (nl_msg_parse(msg, &switchdev_event_handler_rtm_newlink, NULL) < 0) {
                 printf("Unknown message type.");
 			}
-            break;
             break;
 
         case RTM_DELLINK:
@@ -784,16 +786,16 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
         case RTM_NEWNEIGH:
         case RTM_DELNEIGH:
 	        //printf("switchdev_route_event_handler handle neigh request\n");
-	        switchdv_handle_neigh_request(nlh);
+	        switchdv_handle_rtm_neigh(nlh);        
             break;
 
         case RTM_NEWADDR:
-            if (nl_msg_parse(msg, &switchdev_event_handler_obj_input_newaddr, NULL) < 0) {
+            if (nl_msg_parse(msg, &switchdev_event_handler_rtm_newaddr, NULL) < 0) {
                 printf("Unknown message type.");
 			}
             break;
         case RTM_DELADDR:
-            if (nl_msg_parse(msg, &switchdev_event_handler_obj_input_deladdr, NULL) < 0) {
+            if (nl_msg_parse(msg, &switchdev_event_handler_rtm_deladdr, NULL) < 0) {
                 printf("Unknown message type.");
 		    }
             break;
