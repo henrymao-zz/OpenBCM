@@ -2302,7 +2302,7 @@ void system_finalize()
     while (!LIST_EMPTY(&(sys->fib_list)))
     {
         fib = LIST_FIRST(&(sys->fib_list));
-        LIST_REMOVE(fib, system_next);w
+        LIST_REMOVE(fib, system_next);
         fib_entry_finalize(fib);
     }    
 }

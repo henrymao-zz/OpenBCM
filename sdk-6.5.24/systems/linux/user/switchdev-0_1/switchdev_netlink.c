@@ -200,7 +200,6 @@ void fib_entry_finalize(fib_entry_t* fib)
     if (fib == NULL)
         return;
 
-
     free(fib);
 
     return;
@@ -610,7 +609,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
     switch_service_t  *sys      = NULL;
 
     if ((sys = system_get_instance()) == NULL)
-        return NULL;    
+        return 0;    
 
     if (n->nlmsg_type == NLMSG_DONE) {
         return 0;
@@ -670,6 +669,8 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             bcm_l3_egress_t  l3_egr;
             int              egr_if;
             fib_entry_t     *fib = NULL;
+            int              object_id = -1;
+            bcm_l3_route_t   route_info;
 
             bcm_l3_egress_t_init(&l3_egr);
             l3_egr.intf = local_if->l3_intf;
@@ -678,7 +679,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             memcpy(l3_egr.mac_addr, mac_addr, 6);
 
             // 1. check if l3 egress exit for the neighbour
-            rc = bcm_l3_egress_find(0, &egress_object, &object_id);
+            rc = bcm_l3_egress_find(0, &l3_egr, &object_id);
             if (BCM_SUCCESS(rc)) {
                 printf("switchdv_handle_rtm_neigh l3_egress already exist %d\n", object_id);
                 return rc;
@@ -879,7 +880,7 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         // if ip neigh does not exist, need to put fib into wait list
         if (rc) {
             printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
-                    ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw)
+                    ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
             fib_entry_create(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
             return 0;
         }
