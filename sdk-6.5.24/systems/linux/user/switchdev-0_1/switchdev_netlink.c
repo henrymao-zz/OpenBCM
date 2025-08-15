@@ -732,6 +732,7 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
     bcm_l3_egress_t    egress_object;
     int                object_id = -1;
     local_interface_t *local_if = NULL;
+    bcm_l3_route_t     route_info;
 
     if (n->nlmsg_type == NLMSG_DONE)
     {
@@ -757,15 +758,15 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         } else {
             printf("handle_route_request missing oif\n");
 	    return 0;
-	}
+	    }
 
-	if_indextoname(ifindex, ifname);
+        if_indextoname(ifindex, ifname);
         local_if = local_if_find_by_ifindex(ifindex);
 
-	if (!local_if) {
+        if (!local_if) {
             printf("handle_route_request for port %d %s\n",ifindex, ifname);
             return 0;
-	}
+        }
 
 
         if (msgtype == RTM_NEWROUTE) {
@@ -805,14 +806,19 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
             return (0);
         }
 
-        // l3 egress should have been created, but try to recreate
-        
+        // l3 egress should have been created, do not try to recreate here
         
         /*************************************************************/
         /*         Create l3 defip (class = 0)                       */
         /*************************************************************/
-
-
+        bcm_l3_route_t_init(&route_info);
+        route_info.l3a_subnet  = ipv4_dst;
+        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
+        route_info.l3a_intf = object_id;
+        rc = bcm_l3_route_add(0, &route_info);
+        if (BCM_FAILURE(rc)) {
+            printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+        }
     } else if (rtm->rtm_family == AF_INET6) {
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
     }
