@@ -2030,6 +2030,7 @@ int switchdev_vlan_init(int unit)
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     bcm_vlan_block_t         vlan_block;
     bcm_if_t                 host_l3_interface;
+    bcm_l3_route_t           route_info;
 
     bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
     bcm_switch_control_set(unit, bcmSwitchL3IngressMode, 1);
@@ -2114,6 +2115,16 @@ int switchdev_vlan_init(int unit)
         printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
         return rv;
     }    
+
+    /* L3 defip - default route */
+    bcm_l3_route_t_init(&route_info);
+    route_info.l3a_subnet  = 0x0;
+    route_info.l3a_ip_mask = 0x0;
+    route_info.l3a_intf = host_l3_interface;
+    rc = bcm_l3_route_add(0, &route_info);
+    if (BCM_FAILURE(rc)) {
+        printf("Fail add default l3 route: %s\n", bcm_errmsg(rc));
+    }
 
     return rv;
 }
