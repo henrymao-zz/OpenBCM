@@ -811,7 +811,7 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         /*         Create l3 defip (class = 0)                       */
         /*************************************************************/
         bcm_l3_route_t_init(&route_info);
-        route_info.l3a_subnet  = ipv4_dst;
+        route_info.l3a_subnet  = ntohl(ipv4_dst);
         route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
         route_info.l3a_intf = object_id;
         rc = bcm_l3_route_add(0, &route_info);

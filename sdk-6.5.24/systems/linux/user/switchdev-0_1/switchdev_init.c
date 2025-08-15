@@ -2121,9 +2121,9 @@ int switchdev_vlan_init(int unit)
     route_info.l3a_subnet  = 0x0;
     route_info.l3a_ip_mask = 0x0;
     route_info.l3a_intf = host_l3_interface;
-    rc = bcm_l3_route_add(0, &route_info);
-    if (BCM_FAILURE(rc)) {
-        printf("Fail add default l3 route: %s\n", bcm_errmsg(rc));
+    rv = bcm_l3_route_add(0, &route_info);
+    if (BCM_FAILURE(rv)) {
+        printf("Fail add default l3 route: %s\n", bcm_errmsg(rv));
     }
 
     return rv;
