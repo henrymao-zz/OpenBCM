@@ -162,6 +162,19 @@ void local_if_finalize(local_interface_t* lif);
 local_interface_t* local_if_create(char* ifname, int hw_port);
 local_interface_t* local_if_find_by_ifindex(int ifindex);
 
+typedef struct fib_entry_s {
+	int  ifindex;      // linux ifindex
+	int  ipv4_dst;     // dst address
+	int  nh;           // next hop
+    int  dst_len;
+
+    LIST_ENTRY(fib_entry_s) system_next;
+}fib_entry_t;
+void fib_entry_finalize(fib_entry_t* fib);
+fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len);
+fib_entry_t* fib_entry_find_by_nh(int nh);
+
+
 typedef struct switch_service_s {
    struct  nl_sock *generic_sock;
    struct  nl_sock *ucsk;
@@ -178,6 +191,10 @@ typedef struct switch_service_s {
 
    //list of interfaces managed by switchdev module
    LIST_HEAD(lif_list, local_interface_s) lif_list;
+
+   //list of FIB pending download to ASIC
+   LIST_HEAD(fib_list, fib_entry_s) fib_list;
+
 
 }switch_service_t;
 

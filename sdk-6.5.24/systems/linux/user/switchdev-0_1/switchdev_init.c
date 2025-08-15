@@ -2255,6 +2255,7 @@ static void switchdev_system_init(switch_service_t* sys)
     memset(sys, 0, sizeof(switch_service_t));
 
     LIST_INIT(&(sys->lif_list));
+    LIST_INIT(&(sys->fib_list));
 
     return;
 }
@@ -2282,8 +2283,9 @@ switch_service_t* system_get_instance()
 /* System instance tear down */
 void system_finalize()
 {
-    static switch_service_t *sys = NULL;
+    static switch_service_t *sys      = NULL;
     local_interface_t       *local_if = NULL;
+    fib_entry_t             *fib      = NULL;
 
     if ((sys = system_get_instance()) == NULL )
         return;
@@ -2293,8 +2295,16 @@ void system_finalize()
     {
         local_if = LIST_FIRST(&(sys->lif_list));
         LIST_REMOVE(local_if, system_next);
-        //local_if_finalize(local_if);
+        local_if_finalize(local_if);
     }
+
+    /* Release all fib objects */
+    while (!LIST_EMPTY(&(sys->fib_list)))
+    {
+        fib = LIST_FIRST(&(sys->fib_list));
+        LIST_REMOVE(fib, system_next);w
+        fib_entry_finalize(fib);
+    }    
 }
 
 static void

@@ -142,6 +142,69 @@ void local_if_finalize(local_interface_t* lif)
     return;
 }
 
+/*
+ * pending fib list management
+ */
+
+fib_entry_t* local_if_find_by_nh(int nh)
+{
+    switch_service_t *sys = NULL;
+    fib_entry_t      *fib = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(fib, &(sys->fib_list), system_next)
+    {
+        if (fib->nh == nh)
+            return fib;
+    }
+
+    return NULL;
+}
+
+
+fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len)
+{
+    switch_service_t   *sys = NULL;
+    fib_entry_t        *fib = NULL;
+
+    if (!(sys = system_get_instance()))
+        return NULL;
+   
+    if (nh > 0) {
+        if ((fib = fib_entry_find_by_nh(nh)))
+            return fib;
+    }
+
+    if (!(fib = (fib_entry_t*)malloc(sizeof(fib_entry_t))))
+    {
+        printf("fib entry malloc failed ifindex %d ipv4 0x%x/%d nh 0x%x ", 
+               ifindex, ipv4_dst, dst_len, nh);
+        return NULL;
+    }
+
+    memset(fib, 0, sizeof(fib_entry_t));
+    fib->ifindex  = ifindex;
+    fib->nh       = nh;
+    fib->ipv4_dst = ipv4_dst;
+    fib->dst_len  = dst_len;
+
+    LIST_INSERT_HEAD(&(sys->fib_list), fib, system_next);
+
+    return fib;
+}
+
+void fib_entry_finalize(fib_entry_t* fib)
+{
+    if (fib == NULL)
+        return;
+
+
+    free(fib);
+
+    return;
+}
 
 /*
  * switchdev netlink handlers
@@ -543,8 +606,11 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
     uint32_t   ipv4_addr;
     int        rc = 0;
     char       ifname[IF_NAMESIZE+1];
-    local_interface_t *local_if;
+    local_interface_t *local_if = NULL;
+    switch_service_t  *sys      = NULL;
 
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;    
 
     if (n->nlmsg_type == NLMSG_DONE) {
         return 0;
@@ -603,15 +669,44 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             //add, create l3 egress object
             bcm_l3_egress_t  l3_egr;
             int              egr_if;
+            fib_entry_t     *fib = NULL;
 
             bcm_l3_egress_t_init(&l3_egr);
             l3_egr.intf = local_if->l3_intf;
             l3_egr.port = local_if->hw_port;
             l3_egr.vlan = local_if->vlan;      //should always be 4095
             memcpy(l3_egr.mac_addr, mac_addr, 6);
+
+            // 1. check if l3 egress exit for the neighbour
+            rc = bcm_l3_egress_find(0, &egress_object, &object_id);
+            if (BCM_SUCCESS(rc)) {
+                printf("switchdv_handle_rtm_neigh l3_egress already exist %d\n", object_id);
+                return rc;
+            }
+
+            // 2. create l3 egress
             rc = bcm_l3_egress_create(0, 0, &l3_egr, &egr_if); // may need to save egr_if
             printf("bcm_l3_egress create l3_intf %d port %d vlan %d  ret %d\n",
                    l3_egr.intf, l3_egr.port, l3_egr.vlan, rc);
+
+            // 3. search FIB pending list
+            LIST_FOREACH(fib, &(sys->fib_list), system_next) {
+                if (fib->nh == ipv4_addr) {
+                    //try to add route into hardware
+                    bcm_l3_route_t_init(&route_info);
+                    route_info.l3a_subnet  = ntohl(fib->ipv4_dst);
+                    route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+                    route_info.l3a_intf    = object_id;
+                    rc = bcm_l3_route_add(0, &route_info);
+                    if (BCM_FAILURE(rc)) {
+                         printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+                    } else {           
+                        //remove from pending list if success
+                        LIST_REMOVE(fib, system_next);
+                        fib_entry_finalize(fib);
+                    }
+                }
+            }
 
             return rc;
         } else {
@@ -783,7 +878,9 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
 
         // if ip neigh does not exist, need to put fib into wait list
         if (rc) {
-            //TODO
+            printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
+                    ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw)
+            fib_entry_create(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
             return 0;
         }
         // 2. get intf from l3 egress table
