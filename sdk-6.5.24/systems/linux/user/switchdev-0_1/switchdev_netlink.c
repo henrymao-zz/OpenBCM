@@ -588,8 +588,11 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
     if (ndm->ndm_family == AF_INET)
     {
         memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
-        if (!is_del && tb[NDA_LLADDR]) {
+        if (tb[NDA_LLADDR]) {
             memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+        } else {
+            printf("switchdv_handle_rtm_neigh: missing mac info\n");
+            return 0;
         }
     
         printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
@@ -614,7 +617,30 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             return rc;
         } else {
             //del
+            bcm_l3_egress_t  l3_egr;
+            int              object_id = -1;
 
+            bcm_l3_egress_t_init(&l3_egr);
+            memcpy(l3_egr.mac_addr, mac_addr, 6);
+            l3_egr.intf = local_if->l3_intf;
+            l3_egr.port = local_if->hw_port;
+            l3_egr.vlan = local_if->vlan;
+
+            rc = bcm_l3_egress_find(0, &l3_egr, &object_id);
+
+            if (BCM_FAILURE(rc)) {
+                printf("DELNEIGH : Couldn't find l3 egress entry port %d %02x:%02x:%02x:%02x:%02x:%02x\n",
+                       l3_egr.port, 
+                       mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+                return 0;
+            }
+
+            rc = bcm_l3_egress_destroy(0, object_id);
+            if (BCM_FAILURE(rc)) {
+                printf("DELNEIGH : Failed to destroy l3 egress entry %d\n",object_id);
+                return 0;
+            }
+            printf("DELNEIGH : Success destroy l3 egress entry %d\n",object_id);
         }
     } else if (ndm->ndm_family == AF_INET6) {
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
@@ -763,9 +789,9 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         // 2. get intf from l3 egress table
         bcm_l3_egress_t_init(&egress_object);
         memcpy(egress_object.mac_addr, mac_addr, 6);
-	egress_object.intf = local_if->l3_intf;
-	egress_object.port = local_if->hw_port;
-	egress_object.vlan = local_if->vlan;
+        egress_object.intf = local_if->l3_intf;
+        egress_object.port = local_if->hw_port;
+        egress_object.vlan = local_if->vlan;
 
         rc = bcm_l3_egress_find(0, &egress_object, &object_id);
         if (BCM_FAILURE(rc)) {
