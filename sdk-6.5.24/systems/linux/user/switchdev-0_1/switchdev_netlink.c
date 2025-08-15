@@ -577,13 +577,12 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
     }
 
     if_indextoname(ndm->ndm_ifindex, ifname);
-    printf("handle neigh msg %d if_index %d %s\n", msgtype, ndm->ndm_ifindex, ifname);
 
     local_if = local_if_find_by_ifindex(ndm->ndm_ifindex);
     if (!local_if) {
         return 0;
     }
-    
+    printf("handle neigh msg %d if_index %d %s\n", msgtype, ndm->ndm_ifindex, ifname);
 
     if (ndm->ndm_family == AF_INET)
     {
@@ -591,7 +590,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
         if (tb[NDA_LLADDR]) {
             memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
         } else {
-            printf("switchdv_handle_rtm_neigh: missing mac info\n");
+            printf("switchdv_handle_rtm_neigh: missing mac info state %d is_del %d\n", ndm->ndm_state, is_del);
             return 0;
         }
     
