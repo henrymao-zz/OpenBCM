@@ -146,7 +146,7 @@ void local_if_finalize(local_interface_t* lif)
  * pending fib list management
  */
 
-fib_entry_t* local_if_find_by_nh(int nh)
+fib_entry_t* fib_entry_find(int ifindex, int nh, int ipv4_dst, int dst_len)
 {
     switch_service_t *sys = NULL;
     fib_entry_t      *fib = NULL;
@@ -156,7 +156,10 @@ fib_entry_t* local_if_find_by_nh(int nh)
 
     LIST_FOREACH(fib, &(sys->fib_list), system_next)
     {
-        if (fib->nh == nh)
+        if ((fib->nh == nh)&&
+            (fib->ifindex == ifindex) &&
+            (fib->ipv4_dst == ipv4_dst) &&
+            (fib->dst_len == dst_len))
             return fib;
     }
 
@@ -172,10 +175,8 @@ fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len)
     if (!(sys = system_get_instance()))
         return NULL;
    
-    if (nh > 0) {
-        if ((fib = fib_entry_find_by_nh(nh)))
-            return fib;
-    }
+    if ((fib = fib_entry_find(ifindex, nh, ipv4_dst, dst_len)))
+        return fib;
 
     if (!(fib = (fib_entry_t*)malloc(sizeof(fib_entry_t))))
     {
@@ -272,7 +273,7 @@ int switchdev_ops_send_and_recv(switch_service_t *sys, struct nl_msg *msg,
         ret = nl_recvmsgs(sys->generic_sock, cb);
         if (ret)
         {
-            printf("ops_send_and_recv nl_recvmsgs ret %d  %s\n", ret, nl_geterror(ret));
+            //printf("ops_send_and_recv nl_recvmsgs ret %d  %s\n", ret, nl_geterror(ret));
             err = ret;
             goto put_cb;
         }
@@ -667,7 +668,6 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
         if (msgtype != RTM_DELNEIGH) { 
             //add, create l3 egress object
             bcm_l3_egress_t  l3_egr;
-            int              egr_if;
             fib_entry_t     *fib = NULL;
             int              object_id = -1;
             bcm_l3_route_t   route_info;
@@ -686,12 +686,13 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             }
 
             // 2. create l3 egress
-            rc = bcm_l3_egress_create(0, 0, &l3_egr, &egr_if); // may need to save egr_if
-            printf("bcm_l3_egress create l3_intf %d port %d vlan %d  ret %d\n",
-                   l3_egr.intf, l3_egr.port, l3_egr.vlan, rc);
+            rc = bcm_l3_egress_create(0, 0, &l3_egr, &object_id);
+            //printf("bcm_l3_egress create l3_intf %d port %d vlan %d  ret %d\n",
+            //       l3_egr.intf, l3_egr.port, l3_egr.vlan, rc);
 
             // 3. search FIB pending list
             LIST_FOREACH(fib, &(sys->fib_list), system_next) {
+                //printf("iterating nh %d\n", fib->nh);
                 if (fib->nh == ipv4_addr) {
                     //try to add route into hardware
                     bcm_l3_route_t_init(&route_info);
@@ -785,25 +786,25 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t
 
     msg = nlmsg_alloc_simple(RTM_GETNEIGH,NLM_F_REQUEST);
     if (!msg) {
-	printf("ipneigh_get alloc msg failed \n");
+        printf("ipneigh_get alloc msg failed \n");
         return -1;
     }
 
     err = nlmsg_append(msg, &ndm, sizeof(ndm), NLMSG_ALIGNTO);
     if (err) {
-	printf("ipneigh_get append failed %d\n", err);
+        printf("ipneigh_get append failed %d\n", err);
         return err;
     }
 
     err = nla_put_u32(msg, NDA_DST, *addr);
     if (err) {
-	printf("ipneigh_get put addr failed %d addr 0x%x\n", err, *addr);
+        printf("ipneigh_get put addr failed %d addr 0x%x\n", err, *addr);
     	return err;
     }    
 
     err = switchdev_ops_send_and_recv(sys, msg, ipneigh_get_handler, mac_addr);
     if (err) {
-        printf("ipneigh_get ops failed %d addr 0x%x\n", err, *addr);
+        //printf("ipneigh_get ops failed %d addr 0x%x\n", err, *addr);
         return err;
     }
 
