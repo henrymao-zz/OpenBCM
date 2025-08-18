@@ -868,55 +868,79 @@ static int switchdv_handle_route_request(struct nlmsghdr *n)
         if (msgtype == RTM_NEWROUTE) {
             printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
                    ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
-        } else {
-            printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-                   ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);                  
-        }
-        /*************************************************************/
-        /*          Get Neigh(l3 egress) for ipv4_gw                 */
-        /*************************************************************/
-        // 1. get MAC address from ip neigh
-        rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, ifindex, mac_addr);
 
-        // if ip neigh does not exist, need to put fib into wait list
-        if (rc) {
-            printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
-                    ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
-            fib_entry_create(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
-            return 0;
-        }
-        // 2. get intf from l3 egress table
-        bcm_l3_egress_t_init(&egress_object);
-        memcpy(egress_object.mac_addr, mac_addr, 6);
-        egress_object.intf = local_if->l3_intf;
-        egress_object.port = local_if->hw_port;
-        egress_object.vlan = local_if->vlan;
-
-        rc = bcm_l3_egress_find(0, &egress_object, &object_id);
-        if (BCM_FAILURE(rc)) {
-            if (rc != BCM_E_NOT_FOUND) {
-                printf("Error finding egress object entry: %s\n",
-                        bcm_errmsg(rc));
+            /*************************************************************/
+            /*          Get Neigh(l3 egress) for ipv4_gw                 */
+            /*************************************************************/
+            // 1. get MAC address from ip neigh
+            rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, ifindex, mac_addr);
+    
+            // if ip neigh does not exist, need to put fib into wait list
+            if (rc) {
+                printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
+                        ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
+                fib_entry_create(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
+                return 0;
+            }
+            // 2. get intf from l3 egress table
+            bcm_l3_egress_t_init(&egress_object);
+            memcpy(egress_object.mac_addr, mac_addr, 6);
+            egress_object.intf = local_if->l3_intf;
+            egress_object.port = local_if->hw_port;
+            egress_object.vlan = local_if->vlan;
+    
+            rc = bcm_l3_egress_find(0, &egress_object, &object_id);
+            if (BCM_FAILURE(rc)) {
+                if (rc != BCM_E_NOT_FOUND) {
+                    printf("Error finding egress object entry: %s\n",
+                            bcm_errmsg(rc));
+                    return (0);
+                }
+                printf("Couldn't find l3 egress entry port %d %02x:%02x:%02x:%02x:%02x:%02x\n",
+                        egress_object.port, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
                 return (0);
             }
-            printf("Couldn't find l3 egress entry port %d %02x:%02x:%02x:%02x:%02x:%02x\n",
-                    egress_object.port, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-            return (0);
-        }
+    
+            // l3 egress should have been created, do not try to recreate here
+            
+            /*************************************************************/
+            /*         Create l3 defip (class = 0)                       */
+            /*************************************************************/
+            bcm_l3_route_t_init(&route_info);
+            route_info.l3a_subnet  = ntohl(ipv4_dst);
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
+            route_info.l3a_intf = object_id;
+            rc = bcm_l3_route_add(0, &route_info);
+            if (BCM_FAILURE(rc)) {
+                printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+            }
+        } else {
+            fib_entry_t      *fib = NULL;
+            bcm_l3_route_t    route_info;
 
-        // l3 egress should have been created, do not try to recreate here
-        
-        /*************************************************************/
-        /*         Create l3 defip (class = 0)                       */
-        /*************************************************************/
-        bcm_l3_route_t_init(&route_info);
-        route_info.l3a_subnet  = ntohl(ipv4_dst);
-        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
-        route_info.l3a_intf = object_id;
-        rc = bcm_l3_route_add(0, &route_info);
-        if (BCM_FAILURE(rc)) {
-            printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
-        }
+            printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+                   ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
+            /*************************************************************/
+            /*         Delete l3 defip (class = 0)                       */
+            /*************************************************************/   
+            //1. check pending fib list
+            fib = fib_entry_find(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
+
+            if (fib) {
+                LIST_REMOVE(fib, system_next);
+                fib_entry_finalize(fib);
+                return (0);
+            }
+
+            //2. check asic l3 defip table
+            bcm_l3_route_t_init(&route_info);
+            route_info.l3a_subnet  = ntohl(ipv4_dst);
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
+            rc = bcm_l3_route_delete(0, &route_info);
+            if (BCM_FAILURE(rc)) {
+                printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+            }
+        }        
     } else if (rtm->rtm_family == AF_INET6) {
         //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
     }
