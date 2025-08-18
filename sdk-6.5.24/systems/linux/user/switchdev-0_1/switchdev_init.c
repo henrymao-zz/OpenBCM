@@ -2256,6 +2256,8 @@ static void switchdev_system_init(switch_service_t* sys)
 
     LIST_INIT(&(sys->lif_list));
     LIST_INIT(&(sys->fib_list));
+    LIST_INIT(&(sys->neigh_list));\
+    LIST_INIT(&(sys->neigh_gc_list));
 
     return;
 }

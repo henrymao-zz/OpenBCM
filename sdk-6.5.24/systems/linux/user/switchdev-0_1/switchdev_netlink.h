@@ -174,27 +174,42 @@ void fib_entry_finalize(fib_entry_t* fib);
 fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len);
 fib_entry_t* fib_entry_find_by_nh(int nh);
 
+typedef struct neigh_entry_s {
+    int nh;
+	int object_id;
+	int ref_count;
+
+    LIST_ENTRY(neigh_entry_s) system_next;
+}neigh_entry_t;
+void neigh_entry_finalize(LIST_HEAD *head, neigh_entry_t* fib);
+neigh_entry_t* neigh_entry_create(LIST_HEAD *head, int nh, int object_id);
+neigh_entry_t* neigh_entry_find(LIST_HEAD *head, int nh);
 
 typedef struct switch_service_s {
-   struct  nl_sock *generic_sock;
-   struct  nl_sock *ucsk;
-   struct  nl_sock *mcsk;
-   struct  nl_sock *route_event_sock;
-   int     generic_sock_seq;
+    struct  nl_sock *generic_sock;
+    struct  nl_sock *ucsk;
+    struct  nl_sock *mcsk;
+    struct  nl_sock *route_event_sock;
+    int     generic_sock_seq;
 
-   int     ucsk_fd;
-   int     mcsk_fd;
-   int     route_event_fd;
-   int     timer_fd;
-   int     epoll_fd;   
-   int     generic_sock_fd;
+    int     ucsk_fd;
+    int     mcsk_fd;
+    int     route_event_fd;
+    int     timer_fd;
+    int     epoll_fd;   
+    int     generic_sock_fd;
 
-   //list of interfaces managed by switchdev module
-   LIST_HEAD(lif_list, local_interface_s) lif_list;
+    //list of interfaces managed by switchdev module
+    LIST_HEAD(lif_list, local_interface_s) lif_list;
 
-   //list of FIB pending download to ASIC
-   LIST_HEAD(fib_list, fib_entry_s) fib_list;
+    //list of FIB pending download to ASIC
+    LIST_HEAD(fib_list, fib_entry_s)       fib_list;
 
+    //ip neigbour entry downloaded to ASIC
+    LIST_HEAD(neigh_list, neigh_entry_s)   neigh_list;
+
+    //ip neighbour entry pending removal
+    LIST_HEAD(neigh_list, neigh_entry_s)   neigh_gc_list;
 
 }switch_service_t;
 
