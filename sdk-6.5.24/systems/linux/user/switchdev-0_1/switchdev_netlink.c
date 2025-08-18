@@ -209,7 +209,7 @@ void fib_entry_finalize(fib_entry_t* fib)
 /*
  * neigh entry list management
  */
-neigh_entry_t* neigh_entry_find(LIST_HEAD *head, int nh)
+neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh)
 {
     switch_service_t *sys   = NULL;
     neigh_entry_t    *neigh = NULL;
@@ -227,7 +227,7 @@ neigh_entry_t* neigh_entry_find(LIST_HEAD *head, int nh)
 }
 
 
-neigh_entry_t* neigh_entry_create(LIST_HEAD *head, int nh, int object_id)
+neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh, int object_id)
 {
     switch_service_t   *sys   = NULL;
     neigh_entry_t      *neigh = NULL;
@@ -240,7 +240,7 @@ neigh_entry_t* neigh_entry_create(LIST_HEAD *head, int nh, int object_id)
 
     if (!(neigh = (neigh_entry_t*)malloc(sizeof(neigh_entry_t))))
     {
-        printf("fib entry malloc failed nh 0x%x object_id 0d \n", 
+        printf("fib entry malloc failed nh 0x%x object_id %d \n", 
                nh, object_id);
         return NULL;
     }
@@ -252,10 +252,10 @@ neigh_entry_t* neigh_entry_create(LIST_HEAD *head, int nh, int object_id)
 
     LIST_INSERT_HEAD(head, neigh, system_next);
 
-    return fib;
+    return neigh;
 }
 
-void neigh_entry_finalize(LIST_HEAD *head, neigh_entry_t *neigh)
+void neigh_entry_finalize(struct neigh_list_t *head, neigh_entry_t *neigh)
 {
     if (neigh == NULL)
         return;
@@ -505,7 +505,6 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
     struct rtnl_addr  *addr;
     char               ifname[IF_NAMESIZE+1];
     uint32_t           ipv4_addr, *ipv6_addr;
-    uint8_t            prefixlen;
     bcm_l3_host_t      host_info;
     local_interface_t *local_if;
 
@@ -525,7 +524,6 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
         ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
-        prefixlen = nl_addr_get_prefixlen(nl_addr);
 
         //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
         //        ifindex, ifname, ipv4_addr, prefixlen);
@@ -538,7 +536,6 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
         bcm_l3_host_add(0, &host_info);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
-        prefixlen = nl_addr_get_prefixlen(nl_addr);
 
         //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
         //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
@@ -784,7 +781,6 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             return rc;
         } else {
             neigh_entry_t   *neigh = NULL, *neigh_gc = NULL;
-            bcm_l3_egress_t  egress_object;
             //del, remove l3 egress object
             neigh = neigh_entry_find(&(sys->neigh_list), ipv4_addr);
             if(!neigh) {
@@ -805,7 +801,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
 
                 //remove neigh from list
                 LIST_REMOVE(neigh, system_next);
-                neigh_entry_finalize(neigh);
+                neigh_entry_finalize(&(sys->neigh_list), neigh);
             }
 
             // 2. remove l3 egress object 
@@ -907,10 +903,13 @@ static int switchdv_handle_rtm_route(struct nlmsghdr *n)
     int                object_id = -1;
     local_interface_t *local_if = NULL;
     bcm_l3_route_t     route_info;
-    neigh_entry_t     *neigh = NULL
+    neigh_entry_t     *neigh = NULL;
+    switch_service_t  *sys   = NULL;
 
-    if (n->nlmsg_type == NLMSG_DONE)
-    {
+    if ((sys = system_get_instance()) == NULL)
+        return 0;    
+
+    if (n->nlmsg_type == NLMSG_DONE) {
         return 0;
     }
 
@@ -996,7 +995,7 @@ static int switchdv_handle_rtm_route(struct nlmsghdr *n)
             neigh = neigh_entry_find(&(sys->neigh_list), ipv4_gw);
             if(!neigh) {
                 //should not happen
-                printf("Couldn't find neigh entry 0x%x object_id %d\n", ipv4_gw, object_id)
+                printf("Couldn't find neigh entry 0x%x object_id %d\n", ipv4_gw, object_id);
             }
             neigh->ref_count++;
         } else {
@@ -1032,8 +1031,12 @@ static int switchdv_handle_rtm_route(struct nlmsghdr *n)
             neigh = neigh_entry_find(&(sys->neigh_gc_list), ipv4_gw);
             if (neigh) {
                 if(!neigh->ref_count) {
+                    rc = bcm_l3_egress_destroy(0, neigh->object_id);
+                    if (BCM_FAILURE(rc)) {
+                       printf("neigh_gc failed to destroy l3 egress entry %d\n", neigh->object_id);
+                    }
                     LIST_REMOVE(neigh,system_next);
-                    neigh_entry_finalize(neigh);
+                    neigh_entry_finalize(&(sys->neigh_gc_list), neigh);
                 }
             }
 

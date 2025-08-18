@@ -181,9 +181,12 @@ typedef struct neigh_entry_s {
 
     LIST_ENTRY(neigh_entry_s) system_next;
 }neigh_entry_t;
-void neigh_entry_finalize(LIST_HEAD *head, neigh_entry_t* fib);
-neigh_entry_t* neigh_entry_create(LIST_HEAD *head, int nh, int object_id);
-neigh_entry_t* neigh_entry_find(LIST_HEAD *head, int nh);
+
+LIST_HEAD(neigh_list_t, neigh_entry_s);
+
+void neigh_entry_finalize(struct neigh_list_t *head, neigh_entry_t* fib);
+neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh, int object_id);
+neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh);
 
 typedef struct switch_service_s {
     struct  nl_sock *generic_sock;
@@ -200,16 +203,16 @@ typedef struct switch_service_s {
     int     generic_sock_fd;
 
     //list of interfaces managed by switchdev module
-    LIST_HEAD(lif_list, local_interface_s) lif_list;
+    LIST_HEAD(lif_list_t, local_interface_s) lif_list;
 
     //list of FIB pending download to ASIC
-    LIST_HEAD(fib_list, fib_entry_s)       fib_list;
+    LIST_HEAD(fib_list_t, fib_entry_s)       fib_list;
 
     //ip neigbour entry downloaded to ASIC
-    LIST_HEAD(neigh_list, neigh_entry_s)   neigh_list;
+    struct neigh_list_t   neigh_list;
 
     //ip neighbour entry pending removal
-    LIST_HEAD(neigh_list, neigh_entry_s)   neigh_gc_list;
+    struct neigh_list_t   neigh_gc_list;
 
 }switch_service_t;
 
