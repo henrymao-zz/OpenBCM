@@ -648,7 +648,7 @@ void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
     return;
 }
 
-static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
+static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 {
     struct ndmsg  *ndm = NLMSG_DATA(n);
     struct rtattr *tb[NDA_MAX + 1] = {0};	
@@ -669,25 +669,27 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
         return 0;
     }
 
+    //printf("handle neigh msg %d if_index %d state %d type %d\n", 
+    //       msgtype, ndm->ndm_ifindex, ndm->ndm_state, ndm->ndm_type);
+
     /* process msg_type RTM_NEWNEIGH, RTM_GETNEIGH, RTM_DELNEIGH */
     if (n->nlmsg_type != RTM_NEWNEIGH && n->nlmsg_type  != RTM_DELNEIGH )
         return(0);
 
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
-    if (ndm->ndm_state == NUD_INCOMPLETE
-        || ndm->ndm_state == NUD_FAILED
-        || ndm->ndm_state == NUD_NOARP
-        || ndm->ndm_state == NUD_PERMANENT
-        || ndm->ndm_state == NUD_NONE) {
-        if ((ndm->ndm_state == NUD_FAILED) || (ndm->ndm_state == NUD_INCOMPLETE)) {
-            is_del = 1;
-            msgtype = RTM_DELNEIGH;
-        }
 
-        if (!is_del) {
-            return(0);
+    //only handle reachable and delete 
+    if (msgtype != RTM_DELNEIGH) {
+        if ((ndm->ndm_state != NUD_PERMANENT) &&
+            (ndm->ndm_state != NUD_REACHABLE)) {
+            return (0);
         }
+    } else {
+        if (ndm->ndm_state != NUD_FAILED) {
+            return (0);
+        }
+        is_del = 1;
     }
 
     if (!tb[NDA_DST] || ndm->ndm_type != RTN_UNICAST)
@@ -741,12 +743,12 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             // 2. check if l3 egress exist for the neighbour
             rc = bcm_l3_egress_find(0, &egress_object, &object_id);
             if (BCM_SUCCESS(rc)) {
-                printf("switchdv_handle_rtm_neigh l3_egress already exist %d\n", object_id);
+                printf("switchdev_handle_rtm_neigh l3_egress already exist %d\n", object_id);
             } else {
                 // create l3 egress
                 rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
                 if (BCM_FAILURE(rc)) {
-                    printf("switchdv_handle_rtm_neigh l3_egress create failed %d\n", rc);
+                    printf("switchdev_handle_rtm_neigh l3_egress create failed %d\n", rc);
                     return rc;
                 }            
             }
@@ -755,7 +757,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             // 3. insert into neigh_list
             neigh = neigh_entry_create(&(sys->neigh_list), ipv4_addr, object_id);
             if (!neigh) {
-                printf("switchdv_handle_rtm_neigh neigh entry create failed %d addr 0x%d\n", 
+                printf("switchdev_handle_rtm_neigh neigh entry create failed %d addr 0x%d\n", 
                        object_id, ipv4_addr);
             }
 
@@ -786,7 +788,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             //del, remove l3 egress object
             neigh = neigh_entry_find(&(sys->neigh_list), ipv4_addr);
             if(!neigh) {
-                //printf("switchdv_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
+                //printf("switchdev_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
                 return 0;
             }
             
@@ -795,7 +797,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             if (neigh->ref_count) {
                 neigh_gc = neigh_entry_create(&(sys->neigh_gc_list), ipv4_addr, neigh->object_id);
                 if (!neigh_gc) {
-                    printf("switchdv_handle_rtm_neigh failed to create gc entry for %d ip 0x%x\n", 
+                    printf("switchdev_handle_rtm_neigh failed to create gc entry for %d ip 0x%x\n", 
                            neigh->object_id, ipv4_addr);
                     return 0;
                 }
@@ -895,7 +897,7 @@ static int ipneigh_get(uint8_t family, uint32_t *addr, uint32_t ifindex, uint8_t
     return 0;
 }
 
-static int switchdv_handle_rtm_route(struct nlmsghdr *n)
+static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 {
     struct rtmsg      *rtm = NLMSG_DATA(n);
     struct rtattr     *tb[NDA_MAX + 1] = {0};	
@@ -998,13 +1000,14 @@ static int switchdv_handle_rtm_route(struct nlmsghdr *n)
             if (BCM_FAILURE(rc)) {
                 printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
             }
-            // 3. get neigh entry
+            // 3. get neigh entry and update ref_count
             neigh = neigh_entry_find(&(sys->neigh_list), ipv4_gw);
             if(!neigh) {
                 //should not happen
                 printf("Couldn't find neigh entry 0x%x object_id %d\n", ipv4_gw, object_id);
+            } else {
+                neigh->ref_count++;
             }
-            neigh->ref_count++;
         } else {
             fib_entry_t      *fib = NULL;
             bcm_l3_route_t    route_info;
@@ -1082,7 +1085,7 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
         case RTM_NEWNEIGH:
         case RTM_DELNEIGH:
 	        //printf("switchdev_route_event_handler handle neigh request\n");
-	        switchdv_handle_rtm_neigh(nlh);        
+	        switchdev_handle_rtm_neigh(nlh);        
             break;
 
         case RTM_NEWADDR:
@@ -1099,7 +1102,7 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
         case RTM_NEWROUTE:
         case RTM_DELROUTE:
             //printf("switchdev_route_event_handler handle route request\n");
-            switchdv_handle_rtm_route(nlh);
+            switchdev_handle_rtm_route(nlh);
         default:
             return NL_OK;
     }
