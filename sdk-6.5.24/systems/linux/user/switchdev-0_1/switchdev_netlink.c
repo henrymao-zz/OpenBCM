@@ -556,7 +556,6 @@ void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
     struct rtnl_addr  *addr;
     char               ifname[IF_NAMESIZE+1];
     uint32_t           ipv4_addr, *ipv6_addr;
-    uint8_t            prefixlen;
     bcm_l3_host_t      host_info;
     local_interface_t *local_if;
 
@@ -576,10 +575,9 @@ void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
         ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
-        prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("ipv4 l3 host del: index %d %s address 0x%x prefix %d\n",
-                ifindex, ifname, ipv4_addr, prefixlen);
+        //printf("ipv4 l3 host del: index %d %s address 0x%x prefix %d\n",
+        //        ifindex, ifname, ipv4_addr, prefixlen);
 
 		bcm_l3_host_t_init(&host_info);
         host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
@@ -588,10 +586,9 @@ void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
         bcm_l3_host_delete(0, &host_info);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
-        prefixlen = nl_addr_get_prefixlen(nl_addr);
 
-        printf("ipv6 l3 host del: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
-                ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
+        //printf("ipv6 l3 host del: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
         bcm_l3_host_t_init(&host_info);
         host_info.l3a_flags =  BCM_L3_IP6;
@@ -623,17 +620,17 @@ void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
     struct rtnl_link  *link = (struct rtnl_link *)obj;
     uint32_t           ifindex = 0;
     char              *ifname;
-    int                op_state = 0;
+    //int                op_state = 0;
     int                link_flag = 0;
     local_interface_t *local_if;
     
 
     ifindex    = rtnl_link_get_ifindex(link);
-    op_state   = rtnl_link_get_operstate(link);
+    //op_state   = rtnl_link_get_operstate(link);
     ifname     = rtnl_link_get_name(link);
     link_flag  = rtnl_link_get_flags(link);
 
-    printf("handle newlink for %d %s state %d\n", ifindex, ifname, op_state);
+    //printf("handle newlink for %d %s state %d\n", ifindex, ifname, op_state);
 
     local_if = local_if_find_by_ifindex(ifindex);
     if(!local_if) {
@@ -709,11 +706,8 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
     if (ndm->ndm_family == AF_INET)
     {
         memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
-        if (tb[NDA_LLADDR]) {
+        if (!is_del && tb[NDA_LLADDR]) {
             memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
-        } else {
-            printf("switchdv_handle_rtm_neigh: missing mac info state %d is_del %d\n", ndm->ndm_state, is_del);
-            return 0;
         }
     
         //printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
@@ -729,25 +723,33 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             bcm_l3_route_t   route_info;
             neigh_entry_t   *neigh = NULL;
 
+            // 1. neigh might be in gc list
+            neigh = neigh_entry_find(&(sys->neigh_gc_list), ipv4_addr);
+            if (neigh) {
+                LIST_REMOVE(neigh, system_next);
+                neigh_entry_finalize(&(sys->neigh_gc_list), neigh);
+                neigh = NULL;
+            }
+
+            // 2. check if l3 egress exist for the neighbour
             bcm_l3_egress_t_init(&egress_object);
             egress_object.intf = local_if->l3_intf;
             egress_object.port = local_if->hw_port;
             egress_object.vlan = local_if->vlan;      //should always be 4095
             memcpy(egress_object.mac_addr, mac_addr, 6);
 
-            // 1. check if l3 egress exist for the neighbour
+            // 2. check if l3 egress exist for the neighbour
             rc = bcm_l3_egress_find(0, &egress_object, &object_id);
             if (BCM_SUCCESS(rc)) {
                 printf("switchdv_handle_rtm_neigh l3_egress already exist %d\n", object_id);
-                return rc;
+            } else {
+                // create l3 egress
+                rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
+                if (BCM_FAILURE(rc)) {
+                    printf("switchdv_handle_rtm_neigh l3_egress create failed %d\n", rc);
+                    return rc;
+                }            
             }
-
-            // 2. create l3 egress
-            rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
-            if (BCM_SUCCESS(rc)) {
-                printf("switchdv_handle_rtm_neigh l3_egress create failed %d\n", rc);
-                return rc;
-            }            
             //printf("bcm_l3_egress create l3_intf %d port %d vlan %d  ret %d\n",
             //       egress_object.intf, egress_object.port, egress_object.vlan, rc);
             // 3. insert into neigh_list
@@ -757,7 +759,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
                        object_id, ipv4_addr);
             }
 
-            // 4. search FIB pending list
+            // 5. search FIB pending list
             LIST_FOREACH(fib, &(sys->fib_list), system_next) {
                 //printf("iterating nh %d\n", fib->nh);
                 if (fib->nh == ipv4_addr) {
@@ -784,7 +786,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
             //del, remove l3 egress object
             neigh = neigh_entry_find(&(sys->neigh_list), ipv4_addr);
             if(!neigh) {
-                printf("switchdv_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
+                //printf("switchdv_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
                 return 0;
             }
             
@@ -802,6 +804,7 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
                 //remove neigh from list
                 LIST_REMOVE(neigh, system_next);
                 neigh_entry_finalize(&(sys->neigh_list), neigh);
+                return 0;
             }
 
             // 2. remove l3 egress object 
@@ -810,6 +813,10 @@ static int switchdv_handle_rtm_neigh(struct nlmsghdr *n)
                 printf("DELNEIGH : Failed to destroy l3 egress entry %d\n",neigh->object_id);
                 return 0;
             }
+
+            // 3. remove from neigh list
+            LIST_REMOVE(neigh, system_next);
+            neigh_entry_finalize(&(sys->neigh_list), neigh);
             printf("DELNEIGH : Success destroy l3 egress entry %d\n",neigh->object_id);
         }
     } else if (ndm->ndm_family == AF_INET6) {
@@ -1013,6 +1020,7 @@ static int switchdv_handle_rtm_route(struct nlmsghdr *n)
             if (fib) {
                 LIST_REMOVE(fib, system_next);
                 fib_entry_finalize(fib);
+                //if fib exist in pending list, fib should have not programmed into ASIC
                 return (0);
             }
 
@@ -1030,7 +1038,10 @@ static int switchdv_handle_rtm_route(struct nlmsghdr *n)
             //   remove l3 egress entry
             neigh = neigh_entry_find(&(sys->neigh_gc_list), ipv4_gw);
             if (neigh) {
-                if(!neigh->ref_count) {
+                if (neigh->ref_count > 0) {
+                    neigh->ref_count--; 
+                }
+                if(neigh->ref_count == 0) {
                     rc = bcm_l3_egress_destroy(0, neigh->object_id);
                     if (BCM_FAILURE(rc)) {
                        printf("neigh_gc failed to destroy l3 egress entry %d\n", neigh->object_id);
