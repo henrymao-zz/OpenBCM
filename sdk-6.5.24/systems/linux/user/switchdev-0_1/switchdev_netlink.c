@@ -146,7 +146,7 @@ void local_if_finalize(local_interface_t* lif)
  * pending fib list management
  */
 
-fib_entry_t* fib_entry_find(int ifindex, int nh, int ipv4_dst, int dst_len)
+fib_entry_t* fib_entry_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
     switch_service_t *sys = NULL;
     fib_entry_t      *fib = NULL;
@@ -156,9 +156,9 @@ fib_entry_t* fib_entry_find(int ifindex, int nh, int ipv4_dst, int dst_len)
 
     LIST_FOREACH(fib, &(sys->fib_list), system_next)
     {
-        if ((fib->nh == nh)&&
-            (fib->ifindex == ifindex) &&
-            (fib->ipv4_dst == ipv4_dst) &&
+        if ((fib->ifindex == ifindex) &&
+            (memcmp(&fib->nh, nh, sizeof(ip_address_t)) == 0)&&
+            (memcmp(&fib->dst,dst, sizeof(ip_address_t)) == 0) &&
             (fib->dst_len == dst_len))
             return fib;
     }
@@ -167,7 +167,7 @@ fib_entry_t* fib_entry_find(int ifindex, int nh, int ipv4_dst, int dst_len)
 }
 
 
-fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len)
+fib_entry_t* fib_entry_create(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys = NULL;
     fib_entry_t        *fib = NULL;
@@ -175,20 +175,20 @@ fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len)
     if (!(sys = system_get_instance()))
         return NULL;
    
-    if ((fib = fib_entry_find(ifindex, nh, ipv4_dst, dst_len)))
+    if ((fib = fib_entry_find(ifindex, nh, dst, dst_len)))
         return fib;
 
     if (!(fib = (fib_entry_t*)malloc(sizeof(fib_entry_t))))
     {
         printf("fib entry malloc failed ifindex %d ipv4 0x%x/%d nh 0x%x ", 
-               ifindex, ipv4_dst, dst_len, nh);
+               ifindex, dst->ip[0], dst_len, nh->ip[0]);
         return NULL;
     }
 
     memset(fib, 0, sizeof(fib_entry_t));
     fib->ifindex  = ifindex;
-    fib->nh       = nh;
-    fib->ipv4_dst = ipv4_dst;
+    memcpy(&fib->nh, nh, sizeof(ip_address_t));
+    memcpy(&fib->dst, dst, sizeof(ip_address_t));
     fib->dst_len  = dst_len;
 
     LIST_INSERT_HEAD(&(sys->fib_list), fib, system_next);
@@ -209,7 +209,7 @@ void fib_entry_finalize(fib_entry_t* fib)
 /*
  * neigh entry list management
  */
-neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_addr_t *nh)
+neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_address_t *nh)
 {
     switch_service_t *sys   = NULL;
     neigh_entry_t    *neigh = NULL;
@@ -219,7 +219,7 @@ neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_addr_t *nh)
 
     LIST_FOREACH(neigh, head, system_next)
     {
-        if (memcmp(&(neigh->nh), nh) == 0)
+        if (memcmp(&(neigh->nh), nh, sizeof(ip_address_t)) == 0)
             return neigh;
     }
 
@@ -227,7 +227,7 @@ neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_addr_t *nh)
 }
 
 
-neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_addr_t *nh)
+neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_address_t *nh)
 {
     switch_service_t   *sys   = NULL;
     neigh_entry_t      *neigh = NULL;
@@ -240,7 +240,7 @@ neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_addr_t *nh)
 
     if (!(neigh = (neigh_entry_t*)malloc(sizeof(neigh_entry_t))))
     {
-        printf("fib entry malloc failed nh 0x%x \n",  nh);
+        printf("fib entry malloc failed nh 0x%x \n",  nh->ip[0]);
         return NULL;
     }
 
@@ -248,7 +248,7 @@ neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_addr_t *nh)
     neigh->state      = NEIGH_IDLE;
     neigh->object_id  = -1;
     neigh->ref_count  = 0;    
-    memcpy(&neigh->nh, nh, sizeof(ip_addr_t));
+    memcpy(&neigh->nh, nh, sizeof(ip_address_t));
 
     LIST_INSERT_HEAD(head, neigh, system_next);
 
@@ -655,13 +655,13 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 {
     struct ndmsg  *ndm = NLMSG_DATA(n);
     struct rtattr *tb[NDA_MAX + 1] = {0};	
-    int        len = n->nlmsg_len;
-    int        is_del = 0;
-    int        msgtype = n->nlmsg_type;
-    uint8_t    mac_addr[ETHER_ADDR_LEN];
-    ip_addr_t  ip_addr;
-    int        rc = 0;
-    char       ifname[IF_NAMESIZE+1];
+    int            len = n->nlmsg_len;
+    int            is_del = 0;
+    int            msgtype = n->nlmsg_type;
+    uint8_t        mac_addr[ETHER_ADDR_LEN];
+    ip_address_t   ip_addr;
+    int            rc = 0;
+    char           ifname[IF_NAMESIZE+1];
     local_interface_t *local_if = NULL;
     switch_service_t  *sys      = NULL;
 
@@ -710,12 +710,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 
     memset(&ip_addr, 0, sizeof(ip_addr));
     ip_addr.protocol = ndm->ndm_family;
-    if (ndm->ndm_family == AF_INET)
-    {
-        memcpy(&ip_addr.ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
-    } else if (ndm->ndm_family == AF_INET6) {
-        memcpy(&ip_addr.ipv6_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
-    }
+    memcpy(ip_addr.ip, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
 
     if (!is_del && tb[NDA_LLADDR]) {
         memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
@@ -743,7 +738,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
                 // Search FIB pending list
                 LIST_FOREACH(fib, &(sys->fib_list), system_next) {
                     //printf("iterating nh %d\n", fib->nh);
-                    if (memcmp(&fib->nh, &ip_addr) == 0) {
+                    if (memcmp(&fib->nh, &ip_addr, sizeof(ip_address_t)) == 0) {
                         //try to add route into hardware
                         if (neigh->object_id == -1) {
                             //create l3 egress if not exist
@@ -765,7 +760,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
                         }
 
                         bcm_l3_route_t_init(&route_info);
-                        route_info.l3a_subnet  = ntohl(fib->ipv4_dst.ip[0]);
+                        route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
                         route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
                         route_info.l3a_intf    = object_id;
                         rc = bcm_l3_route_add(0, &route_info);
@@ -911,7 +906,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     struct rtattr     *tb[NDA_MAX + 1] = {0};	
     int                len = n->nlmsg_len;
     int                msgtype = n->nlmsg_type;
-    ip_addr_t          ip_dst, ip_gw;
+    ip_address_t       ip_dst, ip_gw;
     uint32_t           ifindex = 0;
     char               ifname[IF_NAMESIZE+1];
     int                rc = 0;
@@ -939,8 +934,8 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     memcpy(ip_dst.ip, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
 
     if (tb[RTA_GATEWAY]) {
-        ipv4_gw.protocol = rtm->rtm_family;
-        memcpy(ipv4_gw.ip, RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
+        ip_gw.protocol = rtm->rtm_family;
+        memcpy(ip_gw.ip, RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
     }
 
     if (tb[RTA_OIF]) {
@@ -967,13 +962,13 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         /*************************************************************/
         // 1. get MAC address from ip neigh
         //rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, ifindex, mac_addr);
-        neigh = neigh_entry_find(&(sys->neigh_list), &ipv4_gw);
+        neigh = neigh_entry_find(&(sys->neigh_list), &ip_gw);
 
         // if ip neigh does not exist, need to put fib into wait list
         if (!neigh) {
             //printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
             //        ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
-            fib_entry_create(ifindex, &ipv4_gw, &ipv4_dst, rtm->rtm_dst_len);
+            fib_entry_create(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
             return 0;
         }
         
@@ -1011,7 +1006,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             /*         Create l3 defip (class = 0)                       */
             /*************************************************************/
             bcm_l3_route_t_init(&route_info);
-            route_info.l3a_subnet  = ntohl(ipv4_dst.ip[0]);
+            route_info.l3a_subnet  = ntohl(ip_dst.ip[0]);
             route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
             route_info.l3a_intf = neigh->object_id;
             rc = bcm_l3_route_add(0, &route_info);
@@ -1033,7 +1028,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         /*         Delete l3 defip (class = 0)                       */
         /*************************************************************/   
         //1. check pending fib list
-        fib = fib_entry_find(ifindex, &ipv4_gw, &ipv4_dst, rtm->rtm_dst_len);
+        fib = fib_entry_find(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
 
         if (fib) {
             LIST_REMOVE(fib, system_next);
@@ -1044,7 +1039,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 
         //2. check asic l3 defip table
         bcm_l3_route_t_init(&route_info);
-        route_info.l3a_subnet  = ntohl(ipv4_dst.ip[0]);
+        route_info.l3a_subnet  = ntohl(ip_dst.ip[0]);
         route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
         rc = bcm_l3_route_delete(0, &route_info);
         if (BCM_FAILURE(rc)) {
@@ -1055,7 +1050,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 
         //3. check neighbour removal pending list, if refcount is 0,
         //   remove l3 egress entry
-        neigh = neigh_entry_find(&(sys->neigh_list), &ipv4_gw);
+        neigh = neigh_entry_find(&(sys->neigh_list), &ip_gw);
         if (neigh->ref_count > 0) {
             neigh->ref_count--; 
         }
