@@ -240,8 +240,7 @@ neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh)
 
     if (!(neigh = (neigh_entry_t*)malloc(sizeof(neigh_entry_t))))
     {
-        printf("fib entry malloc failed nh 0x%x object_id %d \n", 
-               nh, object_id);
+        printf("fib entry malloc failed nh 0x%x \n",  nh);
         return NULL;
     }
 
@@ -789,7 +788,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
             }
             return rc;
         } else {
-            neigh_entry_t   *neigh = NULL, *neigh_gc = NULL;
+            neigh_entry_t   *neigh = NULL;
             //del, remove l3 egress object
             neigh = neigh_entry_find(&(sys->neigh_list), ipv4_addr);
             if(!neigh) {
@@ -805,8 +804,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 
                 case NEIGH_ACTIVE:
                     neigh->state = NEIGH_STALE;
-                    break;
-
+                    //fall through NEIGH_STABLE handling
                 case NEIGH_STALE:
                     if (neigh->ref_count == 0) {
                         if (neigh->object_id != -1) {
@@ -916,7 +914,6 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     uint32_t           ifindex = 0;
     char               ifname[IF_NAMESIZE+1];
     int                rc = 0;
-    uint8_t            mac_addr[6];
     bcm_l3_egress_t    egress_object;
     int                object_id = -1;
     local_interface_t *local_if = NULL;

@@ -188,7 +188,7 @@ typedef struct neigh_entry_s {
     int     nh;
 	int     object_id;
 	int     ref_count;
-	uint8_t mac_addr[6];
+	uint8   mac_addr[6];
 
     LIST_ENTRY(neigh_entry_s) system_next;
 }neigh_entry_t;
