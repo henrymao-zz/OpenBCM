@@ -209,7 +209,7 @@ void fib_entry_finalize(fib_entry_t* fib)
 /*
  * neigh entry list management
  */
-neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh)
+neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_addr_t *nh)
 {
     switch_service_t *sys   = NULL;
     neigh_entry_t    *neigh = NULL;
@@ -219,7 +219,7 @@ neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh)
 
     LIST_FOREACH(neigh, head, system_next)
     {
-        if (neigh->nh == nh)
+        if (memcmp(&(neigh->nh), nh) == 0)
             return neigh;
     }
 
@@ -227,7 +227,7 @@ neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh)
 }
 
 
-neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh)
+neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_addr_t *nh)
 {
     switch_service_t   *sys   = NULL;
     neigh_entry_t      *neigh = NULL;
@@ -247,8 +247,8 @@ neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh)
     memset(neigh, 0, sizeof(neigh_entry_t));
     neigh->state      = NEIGH_IDLE;
     neigh->object_id  = -1;
-    neigh->nh         = nh;
-    neigh->ref_count  = 0;
+    neigh->ref_count  = 0;    
+    memcpy(&neigh->nh, nh, sizeof(ip_addr_t));
 
     LIST_INSERT_HEAD(head, neigh, system_next);
 
@@ -658,8 +658,8 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     int        len = n->nlmsg_len;
     int        is_del = 0;
     int        msgtype = n->nlmsg_type;
-    uint8_t    mac_addr[6];
-    uint32_t   ipv4_addr;
+    uint8_t    mac_addr[ETHER_ADDR_LEN];
+    ip_addr_t  ip_addr;
     int        rc = 0;
     char       ifname[IF_NAMESIZE+1];
     local_interface_t *local_if = NULL;
@@ -708,125 +708,126 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     }
     //printf("handle neigh msg %d if_index %d %s\n", msgtype, ndm->ndm_ifindex, ifname);
 
+    memset(&ip_addr, 0, sizeof(ip_addr));
+    ip_addr.protocol = ndm->ndm_family;
     if (ndm->ndm_family == AF_INET)
     {
-        memcpy(&ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
-        if (!is_del && tb[NDA_LLADDR]) {
-            memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
-        }
-    
-        //printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
-        //       msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
-	    //       mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);        
-
-        //do_arp_learn_from_kernel(ndm, tb, msgtype, is_del);
-        if (msgtype != RTM_DELNEIGH) { 
-            //add, create l3 egress object
-            bcm_l3_egress_t  egress_object;
-            fib_entry_t     *fib = NULL;
-            int              object_id = -1;
-            bcm_l3_route_t   route_info;
-            neigh_entry_t   *neigh = NULL;
-
-            neigh = neigh_entry_find(&(sys->neigh_list), ipv4_addr);
-            if (!neigh) {
-                neigh = neigh_entry_create(&(sys->neigh_list), ipv4_addr);
-                memcpy(neigh->mac_addr, mac_addr, 6);
-            }
-
-            switch(neigh->state) {
-                case NEIGH_IDLE:
-                    // Search FIB pending list
-                    LIST_FOREACH(fib, &(sys->fib_list), system_next) {
-                        //printf("iterating nh %d\n", fib->nh);
-                        if (fib->nh == ipv4_addr) {
-                            //try to add route into hardware
-                            if (neigh->object_id == -1) {
-                                //create l3 egress if not exist
-                                bcm_l3_egress_t_init(&egress_object);
-                                egress_object.intf = local_if->l3_intf;
-                                egress_object.port = local_if->hw_port;
-                                egress_object.vlan = local_if->vlan;      //should always be 4095
-                                memcpy(egress_object.mac_addr, mac_addr, 6);
-
-                                // create l3 egress
-                                rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
-                                if (BCM_FAILURE(rc)) {
-                                    printf("switchdev_handle_rtm_neigh l3_egress create failed %d\n", rc);
-                                    continue;
-                                } else {
-                                    neigh->object_id = object_id;
-                                    neigh->state     = NEIGH_ACTIVE;
-                                }
-                            }
-
-                            bcm_l3_route_t_init(&route_info);
-                            route_info.l3a_subnet  = ntohl(fib->ipv4_dst);
-                            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
-                            route_info.l3a_intf    = object_id;
-                            rc = bcm_l3_route_add(0, &route_info);
-                            if (BCM_FAILURE(rc)) {
-                                printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
-                            } else {      
-                                neigh->ref_count++;     
-                                //remove from pending list if success
-                                LIST_REMOVE(fib, system_next);
-                                fib_entry_finalize(fib);
-                            }
-                        }
-                    }
-                    break;
-                case NEIGH_ACTIVE:
-                    //No need to do anything
-                    break;
-                case NEIGH_STALE:
-                    neigh->state = NEIGH_ACTIVE;
-                    break;
-                default:
-                    //should not happen
-                    break;
-            }
-            return rc;
-        } else {
-            neigh_entry_t   *neigh = NULL;
-            //del, remove l3 egress object
-            neigh = neigh_entry_find(&(sys->neigh_list), ipv4_addr);
-            if(!neigh) {
-                //printf("switchdev_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
-                return 0;
-            }
-            switch(neigh->state) {
-                case NEIGH_IDLE:
-                    //remove neigh from list
-                    LIST_REMOVE(neigh, system_next);
-                    neigh_entry_finalize(&(sys->neigh_list), neigh);                    
-                    break;
-
-                case NEIGH_ACTIVE:
-                    neigh->state = NEIGH_STALE;
-                    //fall through NEIGH_STABLE handling
-                case NEIGH_STALE:
-                    if (neigh->ref_count == 0) {
-                        if (neigh->object_id != -1) {
-                            rc = bcm_l3_egress_destroy(0, neigh->object_id);
-                            if (BCM_FAILURE(rc)) {
-                                printf("DELNEIGH : Failed to destroy l3 egress entry %d\n",neigh->object_id);
-                            } else {
-                                neigh->object_id = -1;
-                            }
-                        }
-                        LIST_REMOVE(neigh, system_next);
-                        neigh_entry_finalize(&(sys->neigh_list), neigh);    
-                    }
-                    break;
-
-                default:
-                    //should not be here
-                    break;                               
-            }
-        }
+        memcpy(&ip_addr.ipv4_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
     } else if (ndm->ndm_family == AF_INET6) {
-        //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
+        memcpy(&ip_addr.ipv6_addr, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
+    }
+
+    if (!is_del && tb[NDA_LLADDR]) {
+        memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
+    }
+
+    //printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
+    //       msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
+	//       mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);        
+    if (msgtype != RTM_DELNEIGH) { 
+        //add, create l3 egress object
+        bcm_l3_egress_t  egress_object;
+        fib_entry_t     *fib = NULL;
+        int              object_id = -1;
+        bcm_l3_route_t   route_info;
+        neigh_entry_t   *neigh = NULL;
+
+        neigh = neigh_entry_find(&(sys->neigh_list), &ip_addr);
+        if (!neigh) {
+            neigh = neigh_entry_create(&(sys->neigh_list), &ip_addr);
+            memcpy(neigh->mac_addr, mac_addr, ETHER_ADDR_LEN);
+        }
+
+        switch(neigh->state) {
+            case NEIGH_IDLE:
+                // Search FIB pending list
+                LIST_FOREACH(fib, &(sys->fib_list), system_next) {
+                    //printf("iterating nh %d\n", fib->nh);
+                    if (memcmp(&fib->nh, &ip_addr) == 0) {
+                        //try to add route into hardware
+                        if (neigh->object_id == -1) {
+                            //create l3 egress if not exist
+                            bcm_l3_egress_t_init(&egress_object);
+                            egress_object.intf = local_if->l3_intf;
+                            egress_object.port = local_if->hw_port;
+                            egress_object.vlan = local_if->vlan;      //should always be 4095
+                            memcpy(egress_object.mac_addr, mac_addr, ETHER_ADDR_LEN);
+
+                            // create l3 egress
+                            rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
+                            if (BCM_FAILURE(rc)) {
+                                printf("switchdev_handle_rtm_neigh l3_egress create failed %d\n", rc);
+                                continue;
+                            } else {
+                                neigh->object_id = object_id;
+                                neigh->state     = NEIGH_ACTIVE;
+                            }
+                        }
+
+                        bcm_l3_route_t_init(&route_info);
+                        route_info.l3a_subnet  = ntohl(fib->ipv4_dst.ip[0]);
+                        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+                        route_info.l3a_intf    = object_id;
+                        rc = bcm_l3_route_add(0, &route_info);
+                        if (BCM_FAILURE(rc)) {
+                            printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+                        } else {      
+                            neigh->ref_count++;     
+                            //remove from pending list if success
+                            LIST_REMOVE(fib, system_next);
+                            fib_entry_finalize(fib);
+                        }
+                    }
+                }
+                break;
+            case NEIGH_ACTIVE:
+                //No need to do anything
+                break;
+            case NEIGH_STALE:
+                neigh->state = NEIGH_ACTIVE;
+                break;
+            default:
+                //should not happen
+                break;
+        }
+        return rc;
+    } else {
+        neigh_entry_t   *neigh = NULL;
+        //del, remove l3 egress object
+        neigh = neigh_entry_find(&(sys->neigh_list), &ip_addr);
+        if(!neigh) {
+            //printf("switchdev_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
+            return 0;
+        }
+        switch(neigh->state) {
+            case NEIGH_IDLE:
+                //remove neigh from list
+                LIST_REMOVE(neigh, system_next);
+                neigh_entry_finalize(&(sys->neigh_list), neigh);                    
+                break;
+
+            case NEIGH_ACTIVE:
+                neigh->state = NEIGH_STALE;
+                //fall through NEIGH_STABLE handling
+            case NEIGH_STALE:
+                if (neigh->ref_count == 0) {
+                    if (neigh->object_id != -1) {
+                        rc = bcm_l3_egress_destroy(0, neigh->object_id);
+                        if (BCM_FAILURE(rc)) {
+                            printf("DELNEIGH : Failed to destroy l3 egress entry %d\n",neigh->object_id);
+                        } else {
+                            neigh->object_id = -1;
+                        }
+                    }
+                    LIST_REMOVE(neigh, system_next);
+                    neigh_entry_finalize(&(sys->neigh_list), neigh);    
+                }
+                break;
+
+            default:
+                //should not be here
+                break;                               
+        }
     }
 
     return (rc);
@@ -910,7 +911,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     struct rtattr     *tb[NDA_MAX + 1] = {0};	
     int                len = n->nlmsg_len;
     int                msgtype = n->nlmsg_type;
-    uint32_t           ipv4_dst = 0, ipv4_gw = 0;
+    ip_addr_t          ip_dst, ip_gw;
     uint32_t           ifindex = 0;
     char               ifname[IF_NAMESIZE+1];
     int                rc = 0;
@@ -934,153 +935,150 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(rtm), len);
 
-    if (rtm->rtm_family == AF_INET)
-    {
-        memcpy(&ipv4_dst, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
+    ip_dst.protocol = rtm->rtm_family;
+    memcpy(ip_dst.ip, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
 
-        if (tb[RTA_GATEWAY]) {
-            memcpy(&ipv4_gw, RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
-        }
+    if (tb[RTA_GATEWAY]) {
+        ipv4_gw.protocol = rtm->rtm_family;
+        memcpy(ipv4_gw.ip, RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
+    }
 
-        if (tb[RTA_OIF]) {
-            memcpy(&ifindex, RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
-        } else {
-            printf("handle_route_request missing oif\n");
+    if (tb[RTA_OIF]) {
+        memcpy(&ifindex, RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
+    } else {
+        printf("handle_route_request missing oif\n");
 	    return 0;
-	    }
+	}
 
-        if_indextoname(ifindex, ifname);
-        local_if = local_if_find_by_ifindex(ifindex);
+    if_indextoname(ifindex, ifname);
+    local_if = local_if_find_by_ifindex(ifindex);
 
-        if (!local_if) {
-            printf("handle_route_request for port %d %s\n",ifindex, ifname);
+    if (!local_if) {
+        printf("handle_route_request for port %d %s\n",ifindex, ifname);
+        return 0;
+    }
+
+    if (msgtype == RTM_NEWROUTE) {
+        //printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+        //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
+
+        /*************************************************************/
+        /*          Get Neigh(l3 egress) for ipv4_gw                 */
+        /*************************************************************/
+        // 1. get MAC address from ip neigh
+        //rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, ifindex, mac_addr);
+        neigh = neigh_entry_find(&(sys->neigh_list), &ipv4_gw);
+
+        // if ip neigh does not exist, need to put fib into wait list
+        if (!neigh) {
+            //printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
+            //        ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
+            fib_entry_create(ifindex, &ipv4_gw, &ipv4_dst, rtm->rtm_dst_len);
             return 0;
         }
+        
+        switch (neigh->state) {
+            case NEIGH_IDLE:
+                //l3 egress not created yet.
+                bcm_l3_egress_t_init(&egress_object);
+                egress_object.intf = local_if->l3_intf;
+                egress_object.port = local_if->hw_port;
+                egress_object.vlan = local_if->vlan;      //should always be 4095
+                memcpy(egress_object.mac_addr, neigh->mac_addr, ETHER_ADDR_LEN);
 
-        if (msgtype == RTM_NEWROUTE) {
-            //printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-            //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
-
-            /*************************************************************/
-            /*          Get Neigh(l3 egress) for ipv4_gw                 */
-            /*************************************************************/
-            // 1. get MAC address from ip neigh
-            //rc = ipneigh_get(rtm->rtm_family, &ipv4_gw, ifindex, mac_addr);
-            neigh = neigh_entry_find(&(sys->neigh_list), ipv4_gw);
-
-            // if ip neigh does not exist, need to put fib into wait list
-            if (!neigh) {
-                //printf("insert into fib_list ifindex %d ipv4 0x%x/%d nh 0x%x\n",
-                //        ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
-                fib_entry_create(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
-                return 0;
-            }
-            
-            switch (neigh->state) {
-                case NEIGH_IDLE:
-                    //l3 egress not created yet.
-                    bcm_l3_egress_t_init(&egress_object);
-                    egress_object.intf = local_if->l3_intf;
-                    egress_object.port = local_if->hw_port;
-                    egress_object.vlan = local_if->vlan;      //should always be 4095
-                    memcpy(egress_object.mac_addr, neigh->mac_addr, 6);
-
-                    // create l3 egress
-                    rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
-                    if (BCM_FAILURE(rc)) {
-                        printf("switchdev_handle_rtm_neigh l3_egress create failed %d\n", rc);
-                    } else {
-                        neigh->object_id = object_id;
-                        neigh->state     = NEIGH_ACTIVE;
-                    }                    
-                    break;  
-                case NEIGH_ACTIVE:
-                    //do nothing
-                    break;
-                case NEIGH_STALE:
-                    //do nothing
-                    break;
-                default:
-                    break;
-            }
-
-            // l3 egress should have been created
-            if (neigh->object_id != -1) {
-                /*************************************************************/
-                /*         Create l3 defip (class = 0)                       */
-                /*************************************************************/
-                bcm_l3_route_t_init(&route_info);
-                route_info.l3a_subnet  = ntohl(ipv4_dst);
-                route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
-                route_info.l3a_intf = neigh->object_id;
-                rc = bcm_l3_route_add(0, &route_info);
+                // create l3 egress
+                rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);
                 if (BCM_FAILURE(rc)) {
-                    printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+                    printf("switchdev_handle_rtm_neigh l3_egress create failed %d\n", rc);
                 } else {
-                    neigh->ref_count++;
-                }
-            }
+                    neigh->object_id = object_id;
+                    neigh->state     = NEIGH_ACTIVE;
+                }                    
+                break;  
+            case NEIGH_ACTIVE:
+                //do nothing
+                break;
+            case NEIGH_STALE:
+                //do nothing
+                break;
+            default:
+                break;
+        }
 
-            return (0);
-        } else {
-            fib_entry_t      *fib = NULL;
-            bcm_l3_route_t    route_info;
-
-            //printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-            //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
+        // l3 egress should have been created
+        if (neigh->object_id != -1) {
             /*************************************************************/
-            /*         Delete l3 defip (class = 0)                       */
-            /*************************************************************/   
-            //1. check pending fib list
-            fib = fib_entry_find(ifindex, ipv4_gw, ipv4_dst, rtm->rtm_dst_len);
-
-            if (fib) {
-                LIST_REMOVE(fib, system_next);
-                fib_entry_finalize(fib);
-                //if fib exist in pending list, fib should have not programmed into ASIC
-                return (0);
-            }
-
-            //2. check asic l3 defip table
+            /*         Create l3 defip (class = 0)                       */
+            /*************************************************************/
             bcm_l3_route_t_init(&route_info);
-            route_info.l3a_subnet  = ntohl(ipv4_dst);
+            route_info.l3a_subnet  = ntohl(ipv4_dst.ip[0]);
             route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
-            rc = bcm_l3_route_delete(0, &route_info);
+            route_info.l3a_intf = neigh->object_id;
+            rc = bcm_l3_route_add(0, &route_info);
             if (BCM_FAILURE(rc)) {
-                //should not happen
-                printf("Fail delete l3 route: %s\n", bcm_errmsg(rc));
-                return (0);
+                printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
+            } else {
+                neigh->ref_count++;
             }
+        }
 
-            //3. check neighbour removal pending list, if refcount is 0,
-            //   remove l3 egress entry
-            neigh = neigh_entry_find(&(sys->neigh_list), ipv4_gw);
-            if (neigh->ref_count > 0) {
-                neigh->ref_count--; 
-            }
-            switch (neigh->state) {
-                case NEIGH_IDLE:
-                    break;
-                case NEIGH_ACTIVE:
-                    break;
-                case NEIGH_STALE:
-                   if (neigh->ref_count == 0) {
-                    rc = bcm_l3_egress_destroy(0, neigh->object_id);
-                    if (BCM_FAILURE(rc)) {
-                       printf("neigh_gc failed to destroy l3 egress entry %d\n", neigh->object_id);
-                    }
-                    
-                    LIST_REMOVE(neigh,system_next);
-                    neigh_entry_finalize(&(sys->neigh_list), neigh);
-                   }
-                   break;
-                default:
-                    break;
-            }
-        }        
-    } else if (rtm->rtm_family == AF_INET6) {
-        //do_ndisc_learn_from_kernel(ndm, tb, msgtype, is_del);
-    }
+        return (0);
+    } else {
+        fib_entry_t      *fib = NULL;
+        bcm_l3_route_t    route_info;
+
+        //printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+        //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
+        /*************************************************************/
+        /*         Delete l3 defip (class = 0)                       */
+        /*************************************************************/   
+        //1. check pending fib list
+        fib = fib_entry_find(ifindex, &ipv4_gw, &ipv4_dst, rtm->rtm_dst_len);
+
+        if (fib) {
+            LIST_REMOVE(fib, system_next);
+            fib_entry_finalize(fib);
+            //if fib exist in pending list, fib should have not programmed into ASIC
+            return (0);
+        }
+
+        //2. check asic l3 defip table
+        bcm_l3_route_t_init(&route_info);
+        route_info.l3a_subnet  = ntohl(ipv4_dst.ip[0]);
+        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
+        rc = bcm_l3_route_delete(0, &route_info);
+        if (BCM_FAILURE(rc)) {
+            //should not happen
+            printf("Fail delete l3 route: %s\n", bcm_errmsg(rc));
+            return (0);
+        }
+
+        //3. check neighbour removal pending list, if refcount is 0,
+        //   remove l3 egress entry
+        neigh = neigh_entry_find(&(sys->neigh_list), &ipv4_gw);
+        if (neigh->ref_count > 0) {
+            neigh->ref_count--; 
+        }
+        switch (neigh->state) {
+            case NEIGH_IDLE:
+                break;
+            case NEIGH_ACTIVE:
+                break;
+            case NEIGH_STALE:
+               if (neigh->ref_count == 0) {
+                rc = bcm_l3_egress_destroy(0, neigh->object_id);
+                if (BCM_FAILURE(rc)) {
+                   printf("neigh_gc failed to destroy l3 egress entry %d\n", neigh->object_id);
+                }
+                
+                LIST_REMOVE(neigh,system_next);
+                neigh_entry_finalize(&(sys->neigh_list), neigh);
+               }
+               break;
+            default:
+                break;
+        }
+    }        
 
     return (0);
 }

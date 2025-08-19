@@ -162,11 +162,16 @@ void local_if_finalize(local_interface_t* lif);
 local_interface_t* local_if_create(char* ifname, int hw_port);
 local_interface_t* local_if_find_by_ifindex(int ifindex);
 
+typedef struct ip_addr_s {
+    uint32 protocol;      //AF_INET4 AF_INET6
+    uint32 ip[4];
+}ip_addr_t;
+
 typedef struct fib_entry_s {
-	int  ifindex;      // linux ifindex
-	int  ipv4_dst;     // dst address
-	int  nh;           // next hop
-    int  dst_len;
+    int        ifindex;      // linux ifindex
+    int        ipv4_dst;     // dst address
+    ip_addr_t  nh;           // next hop
+    int        dst_len;
 
     LIST_ENTRY(fib_entry_s) system_next;
 }fib_entry_t;
@@ -178,17 +183,20 @@ enum neigh_state_e {
     NEIGH_IDLE,         // neigh created, no route associated(ref_count == 0), 
 	                    // no l3 egress entry created
 
-	NEIGH_ACTIVE,       // neigh created, routes associated, l3 egress entry created
+    NEIGH_ACTIVE,       // neigh created, routes associated, l3 egress entry created
 
-	NEIGH_STALE         // RTM_DELNEIGH received, will destroy entry when ref_count is 0
+    NEIGH_STALE         // RTM_DELNEIGH received, will destroy entry when ref_count is 0
 };
 
+#define ETHER_ADDR_LEN 6
+
+
 typedef struct neigh_entry_s {
-	int     state;
-    int     nh;
-	int     object_id;
-	int     ref_count;
-	uint8   mac_addr[6];
+    int              state;
+    int              object_id;
+    int              ref_count;
+    ip_addr_t        nh;
+    uint8            mac_addr[ETHER_ADDR_LEN];
 
     LIST_ENTRY(neigh_entry_s) system_next;
 }neigh_entry_t;
@@ -196,8 +204,8 @@ typedef struct neigh_entry_s {
 LIST_HEAD(neigh_list_t, neigh_entry_s);
 
 void neigh_entry_finalize(struct neigh_list_t *head, neigh_entry_t* fib);
-neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh);
-neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh);
+neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_addr_t *nh);
+neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_addr_t *nh);
 
 typedef struct switch_service_s {
     //struct  nl_sock *generic_sock;
