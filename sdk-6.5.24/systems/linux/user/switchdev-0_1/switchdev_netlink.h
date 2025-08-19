@@ -174,10 +174,21 @@ void fib_entry_finalize(fib_entry_t* fib);
 fib_entry_t* fib_entry_create(int ifindex, int nh, int ipv4_dst, int dst_len);
 fib_entry_t* fib_entry_find_by_nh(int nh);
 
+enum neigh_state_e {
+    NEIGH_IDLE,         // neigh created, no route associated(ref_count == 0), 
+	                    // no l3 egress entry created
+
+	NEIGH_ACTIVE,       // neigh created, routes associated, l3 egress entry created
+
+	NEIGH_STALE         // RTM_DELNEIGH received, will destroy entry when ref_count is 0
+};
+
 typedef struct neigh_entry_s {
-    int nh;
-	int object_id;
-	int ref_count;
+	int     state;
+    int     nh;
+	int     object_id;
+	int     ref_count;
+	uint8_t mac_addr[6];
 
     LIST_ENTRY(neigh_entry_s) system_next;
 }neigh_entry_t;
@@ -185,22 +196,22 @@ typedef struct neigh_entry_s {
 LIST_HEAD(neigh_list_t, neigh_entry_s);
 
 void neigh_entry_finalize(struct neigh_list_t *head, neigh_entry_t* fib);
-neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh, int object_id);
+neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, int nh);
 neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, int nh);
 
 typedef struct switch_service_s {
-    struct  nl_sock *generic_sock;
+    //struct  nl_sock *generic_sock;
     struct  nl_sock *ucsk;
     struct  nl_sock *mcsk;
     struct  nl_sock *route_event_sock;
-    int     generic_sock_seq;
+    //int     generic_sock_seq;
 
     int     ucsk_fd;
     int     mcsk_fd;
     int     route_event_fd;
     int     timer_fd;
     int     epoll_fd;   
-    int     generic_sock_fd;
+    //int     generic_sock_fd;
 
     //list of interfaces managed by switchdev module
     LIST_HEAD(lif_list_t, local_interface_s) lif_list;
@@ -210,9 +221,6 @@ typedef struct switch_service_s {
 
     //ip neigbour entry downloaded to ASIC
     struct neigh_list_t   neigh_list;
-
-    //ip neighbour entry pending removal
-    struct neigh_list_t   neigh_gc_list;
 
 }switch_service_t;
 
