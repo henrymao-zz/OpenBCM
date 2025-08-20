@@ -778,7 +778,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
             case NEIGH_ACTIVE:
                 //No need to do anything
                 break;
-            case NEIGH_STALE:
+            case NEIGH_DELETING:
                 neigh->state = NEIGH_ACTIVE;
                 break;
             default:
@@ -802,9 +802,9 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
                 break;
 
             case NEIGH_ACTIVE:
-                neigh->state = NEIGH_STALE;
-                //fall through NEIGH_STABLE handling
-            case NEIGH_STALE:
+                neigh->state = NEIGH_DELETING;
+                //fall through NEIGH_DELETING handling
+            case NEIGH_DELETING:
                 if (neigh->ref_count == 0) {
                     if (neigh->object_id != -1) {
                         rc = bcm_l3_egress_destroy(0, neigh->object_id);
@@ -993,7 +993,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             case NEIGH_ACTIVE:
                 //do nothing
                 break;
-            case NEIGH_STALE:
+            case NEIGH_DELETING:
                 //do nothing
                 break;
             default:
@@ -1059,7 +1059,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
                 break;
             case NEIGH_ACTIVE:
                 break;
-            case NEIGH_STALE:
+            case NEIGH_DELETING:
                if (neigh->ref_count == 0) {
                 rc = bcm_l3_egress_destroy(0, neigh->object_id);
                 if (BCM_FAILURE(rc)) {

@@ -184,7 +184,7 @@ enum neigh_state_e {
 
     NEIGH_ACTIVE,       // neigh created, routes associated, l3 egress entry created
 
-    NEIGH_STALE         // RTM_DELNEIGH received, will destroy entry when ref_count is 0
+    NEIGH_DELETING      // RTM_DELNEIGH received, will destroy entry when ref_count is 0
 };
 
 #define ETHER_ADDR_LEN 6
