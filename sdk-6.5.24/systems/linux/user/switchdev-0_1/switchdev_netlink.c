@@ -67,6 +67,20 @@
 #define prerr(...) fprintf(stderr, "error: " __VA_ARGS__)
 
 
+static void ipv6_create_mask(bcm_ip6_t *ip6_mask, uint32 prefix_length) {
+    int i;
+
+    for (i=15; i>=0; i--) {
+        if (i < prefix_length/8) {
+            ip6_mask[i] = 0xFF;
+        } else if (i == prefix_length/8) {
+            ip6_mask[i] = 0xFF - ((1 << (8 -(prefix_length % 8))) - 1);
+        } else {
+            ip6_mask[i] = 0X00;
+        }
+    }
+}
+
 /*
  * local port management
  */
@@ -760,9 +774,17 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
                         }
 
                         bcm_l3_route_t_init(&route_info);
-                        route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
-                        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+                        if (fib->dst.protocol == AF_INET) {
+                            route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
+                            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+                        } else {
+                            route_info.l3a_flags = BCM_L3_IP6;
+                            memcpy(route_info.l3a_ip6_net, fib->dst.ip, 16);
+                            ipv6_create_mask(route_info.l3a_ip6_mask, fib->dst_len);
+
+                        }
                         route_info.l3a_intf    = object_id;
+
                         rc = bcm_l3_route_add(0, &route_info);
                         if (BCM_FAILURE(rc)) {
                             printf("Fail add l3 route: %s\n", bcm_errmsg(rc));
@@ -1006,8 +1028,14 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             /*         Create l3 defip (class = 0)                       */
             /*************************************************************/
             bcm_l3_route_t_init(&route_info);
-            route_info.l3a_subnet  = ntohl(ip_dst.ip[0]);
-            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
+            if (ip_dst.protocol == AF_INET) {
+                route_info.l3a_subnet  = ntohl(ip_dst.ip[0]);
+                route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - rtm->rtm_dst_len)) & 0xFFFFFFFF;
+            } else {
+                route_info.l3a_flags = BCM_L3_IP6;
+                memcpy(route_info.l3a_ip6_net, ip_dst.ip, 16);
+                ipv6_create_mask(route_info.l3a_ip6_mask, rtm->rtm_dst_len);
+            } 
             route_info.l3a_intf = neigh->object_id;
             rc = bcm_l3_route_add(0, &route_info);
             if (BCM_FAILURE(rc)) {
