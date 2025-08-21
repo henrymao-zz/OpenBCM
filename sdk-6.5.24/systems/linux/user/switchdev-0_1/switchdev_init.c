@@ -2246,6 +2246,10 @@ uint32 pci_config_getw(pci_dev_t *dev, uint32 addr)
 static int switchdev_netlink_thread_priority = 100;
 static volatile sal_thread_t switchdev_netlink_thread_id        = SAL_THREAD_ERROR;
 
+/* switchdev async object thread */
+static int switchdev_async_obj_thread_priority = 100;
+static volatile sal_thread_t switchdev_async_obj_thread_id      = SAL_THREAD_ERROR;
+
 
 static void switchdev_system_init(switch_service_t* sys)
 {
@@ -2256,7 +2260,11 @@ static void switchdev_system_init(switch_service_t* sys)
 
     LIST_INIT(&(sys->lif_list));
     LIST_INIT(&(sys->fib_list));
-    LIST_INIT(&(sys->neigh_list));\
+    LIST_INIT(&(sys->neigh_list));
+
+    LIST_INIT(&(sys->object_list));
+    pthread_mutex_init(&sys->object_lock, NULL);
+    pthread_cond_init(&sys->object_cond, NULL);
 
     return;
 }
@@ -2320,13 +2328,42 @@ switchdev_netlink_thread(void *cookie)
 
 int switchdev_netlink_init(void)
 {
-    switchdev_netlink_thread_id = sal_thread_create("bcmATP-RX",
+    switchdev_netlink_thread_id = sal_thread_create("netlink",
                                          SAL_THREAD_STKSZ,
                                          switchdev_netlink_thread_priority,
                                          switchdev_netlink_thread, NULL);
     if (switchdev_netlink_thread_id == SAL_THREAD_ERROR) {
         sal_thread_destroy(switchdev_netlink_thread_id);
         switchdev_netlink_thread_id = SAL_THREAD_ERROR;
+        return BCM_E_MEMORY;
+    }
+    return BCM_E_NONE;
+}
+
+static void 
+switchdev_async_obj_thread(void *cookie)
+{
+    switch_service_t *sys = NULL;
+
+    if ((sys = system_get_instance()) == NULL )
+        return;    
+    COMPILER_REFERENCE(cookie);
+
+
+    switchdev_async_obj_main();
+
+    sal_thread_exit(0);
+}
+
+int switchdev_async_obj_init(void)
+{
+    switchdev_async_obj_thread_id = sal_thread_create("async object manager",
+                                         SAL_THREAD_STKSZ,
+                                         switchdev_async_obj_thread_priority,
+                                         switchdev_async_obj_thread, NULL);
+    if (switchdev_async_obj_thread_id == SAL_THREAD_ERROR) {
+        sal_thread_destroy(switchdev_async_obj_thread_id);
+        switchdev_async_obj_thread_id = SAL_THREAD_ERROR;
         return BCM_E_MEMORY;
     }
     return BCM_E_NONE;

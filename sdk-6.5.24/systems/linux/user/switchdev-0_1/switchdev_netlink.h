@@ -146,6 +146,7 @@ enum switchdev_obj_id {
 	SWITCHDEV_OBJ_ID_IN_STATE_MRP,
 };
 
+
 typedef struct local_interface_s {
     int  ifindex;                 // linux ifindex
     char name[IF_NAMESIZE+1]; 
@@ -162,49 +163,8 @@ void local_if_finalize(local_interface_t* lif);
 local_interface_t* local_if_create(char* ifname, int hw_port);
 local_interface_t* local_if_find_by_ifindex(int ifindex);
 
-typedef struct ip_address_s {
-    uint32 protocol;      //AF_INET4 AF_INET6
-    uint32 ip[4];
-}ip_address_t;
-
-typedef struct fib_entry_s {
-    int           ifindex;      // linux ifindex
-    ip_address_t  dst;          // dst address
-    ip_address_t  nh;           // next hop
-    int           dst_len;
-
-    LIST_ENTRY(fib_entry_s) system_next;
-}fib_entry_t;
-void fib_entry_finalize(fib_entry_t* fib);
-fib_entry_t* fib_entry_create(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
-
-enum neigh_state_e {
-    NEIGH_IDLE,         // neigh created, no route associated(ref_count == 0), 
-	                    // no l3 egress entry created
-
-    NEIGH_ACTIVE,       // neigh created, routes associated, l3 egress entry created
-
-    NEIGH_DELETING      // RTM_DELNEIGH received, will destroy entry when ref_count is 0
-};
-
-#define ETHER_ADDR_LEN 6
 
 
-typedef struct neigh_entry_s {
-    int              state;
-    int              object_id;
-    int              ref_count;
-    ip_address_t     nh;
-    uint8            mac_addr[ETHER_ADDR_LEN];
-
-    LIST_ENTRY(neigh_entry_s) system_next;
-}neigh_entry_t;
-
-LIST_HEAD(neigh_list_t, neigh_entry_s);
-
-void neigh_entry_finalize(struct neigh_list_t *head, neigh_entry_t* fib);
-neigh_entry_t* neigh_entry_create(struct neigh_list_t *head, ip_address_t *nh);
-neigh_entry_t* neigh_entry_find(struct neigh_list_t *head, ip_address_t *nh);
 
 typedef struct switch_service_s {
     //struct  nl_sock *generic_sock;
@@ -221,13 +181,18 @@ typedef struct switch_service_s {
     //int     generic_sock_fd;
 
     //list of interfaces managed by switchdev module
-    LIST_HEAD(lif_list_t, local_interface_s) lif_list;
+    LIST_HEAD(lif_list_t, local_interface_s)      lif_list;
 
-    //list of FIB pending download to ASIC
-    LIST_HEAD(fib_list_t, fib_entry_s)       fib_list;
+    //FIB object list (TODO: convert to hash table)
+    LIST_HEAD(fib_list_t, fib_entry_s)            fib_list;
 
-    //ip neigbour entry downloaded to ASIC
-    struct neigh_list_t   neigh_list;
+    //ip neigbour object list (TODO: convert to hash table)
+    LIST_HEAD(neigh_list_t, neigh_entry_s)        neigh_list;
+
+    //object list - work queue for object download
+    LIST_HEAD(obj_list_t, async_obj_entry_s)      object_list;
+	pthread_mutex_t                               object_lock;
+	pthread_cond_t                                object_cond;
 
 }switch_service_t;
 
