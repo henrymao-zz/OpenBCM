@@ -648,11 +648,10 @@ int process_async_object(async_obj_entry_t *entry)
                     continue;
                 }
                 if(parent->obj->state != ASYNC_OBJ_STATE_ACTIVE) {
-                    //keep in PENDING state, put back into work queue
-                    pthread_mutex_lock(&(sys->object_lock));
-                    LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
-                    pthread_mutex_unlock(&(sys->object_lock));      
                     printf("process_async_object parent %p state %d\n", parent->obj, parent->obj->state);
+                    //remove from workqueue, will be add back to workqueue if child download success 
+                    entry->obj = NULL;
+                    free(entry);
                     return -1;              
                 }
             }
@@ -664,7 +663,20 @@ int process_async_object(async_obj_entry_t *entry)
                 obj->state = ASYNC_OBJ_STATE_ACTIVE;
             }
             printf("process_async_object obj %p state %d  create_cb rc %d\n", obj, obj->state, rc);
-            //remove from work queue
+
+            //check if there is child waiting for download, put them into work queue
+            LIST_FOREACH(child, &(obj->child_list), system_next) {
+               if (!child->obj) {
+                   //should not happen, ignore
+                   continue;
+               }
+
+               if (child->obj->state == ASYNC_OBJ_STATE_PENDING) {
+                   child->obj->object_download(child->obj);
+               }
+            }
+
+            //free workqueue item
             entry->obj = NULL;
             free(entry);
             break;
