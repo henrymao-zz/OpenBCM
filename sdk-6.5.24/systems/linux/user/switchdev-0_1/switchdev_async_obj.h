@@ -50,7 +50,7 @@ typedef struct async_object_s {
 	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_parent_list_t, async_obj_entry_s)  parent_list;
-	LIST_HEAD(obj_sibling_list_t, async_obj_entry_s)  sibling_list;
+	LIST_HEAD(obj_child_list_t, async_obj_entry_s)  child_list;
 
     object_create_func     object_create;
     object_delete_func     object_delete;
@@ -107,7 +107,7 @@ typedef struct async_obj_neigh_s {
 	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_neigh_parent_list_t, async_obj_entry_s)   parent_list;
-	LIST_HEAD(obj_neigh_sibling_list_t, async_obj_entry_s)  sibling_list;
+	LIST_HEAD(obj_neigh_child_list_t, async_obj_entry_s)    child_list;
 
     object_create_func     object_create;
     object_delete_func     object_delete;
@@ -125,9 +125,8 @@ typedef struct async_obj_neigh_s {
     local_interface_t *local_if;
 } async_obj_neigh_t;
 
-async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh);
-async_obj_neigh_t* async_obj_neigh_find(ip_address_t *nh);
-void async_obj_neigh_free(async_object_t* neigh);
+async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh);
+async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh);
 
 
 typedef struct async_obj_fib_s {
@@ -137,7 +136,7 @@ typedef struct async_obj_fib_s {
 	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_fib_parent_list_t, async_obj_entry_s)   parent_list;
-	LIST_HEAD(obj_fib_sibling_list_t, async_obj_entry_s)  sibling_list;
+	LIST_HEAD(obj_fib_child_list_t, async_obj_entry_s)    child_list;
 
     object_create_func     object_create;
     object_delete_func     object_delete;
@@ -155,9 +154,8 @@ typedef struct async_obj_fib_s {
     int           dst_len;
 }async_obj_fib_t;
 
-async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
-void async_obj_fib_free(async_object_t* fib);
-async_obj_fib_t* async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
 
 //////////////////////////////////////////////////////////
 

@@ -101,7 +101,7 @@ static void async_object_free(async_object_t **obj)
 
     entry->obj = NULL;
 
-    if (! *obj) {
+    if (!(*obj)) {
         free(*obj);
     }
     free(entry);
@@ -123,6 +123,8 @@ int async_object_delete(async_object_t **obj)
     if(!obj || !*obj) {
         return -1;
     }
+
+    printf("async_object_delete type %d state %d\n", (*obj)->type, (*obj)->state); 
 
     switch((*obj)->state) {
         case ASYNC_OBJ_STATE_IDLE:
@@ -175,6 +177,8 @@ int async_object_download(async_object_t *obj)
         return -1;
     }
 
+    printf("async_object_download  type %d state %d\n", obj->type, obj->state);
+
     switch(obj->state) {
         case ASYNC_OBJ_STATE_IDLE:
             obj->state = ASYNC_OBJ_STATE_PENDING;
@@ -199,6 +203,8 @@ int async_object_download(async_object_t *obj)
 
     entry->obj = obj;
 
+    printf("async_object_download obj %p \n", obj);
+
     pthread_mutex_lock(&(sys->object_lock));
     LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
     pthread_mutex_unlock(&(sys->object_lock));
@@ -221,6 +227,8 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
         return -1;
     }
 
+    printf("async_object_add_parent...\n");
+
     //only allowed if obj->state is ASYNC_OBJ_STATE_IDLE
     if (obj->state != ASYNC_OBJ_STATE_IDLE) {
         return -1;
@@ -239,21 +247,24 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
         return -1;
     }    
 
-    //update parent's sibling list
+    //update parent's child list
+    memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = obj;
     pthread_mutex_lock(&(parent->lock));
-    LIST_INSERT_HEAD(&(parent->sibling_list), entry, system_next);
+    LIST_INSERT_HEAD(&(parent->child_list), entry, system_next);
     pthread_mutex_unlock(&(parent->lock));
 
     //update self's parent list
+    memset(entry_p, 0, sizeof(async_obj_entry_t));
     entry_p->obj = parent;
     pthread_mutex_lock(&(obj->lock));
-    LIST_INSERT_HEAD(&(obj->parent_list), entry, system_next);
+    LIST_INSERT_HEAD(&(obj->parent_list), entry_p, system_next);
     pthread_mutex_unlock(&(obj->lock));
 
     //if parent is not in download list, add parent to download list
     pthread_mutex_lock(&(parent->lock));
-    if (parent->state != ASYNC_OBJ_STATE_PENDING) {
+    if (parent->state == ASYNC_OBJ_STATE_IDLE) {
+        printf("async_object_add_parent trigger parent download\n");
         rc = async_object_download(parent);
         if (rc) {
             printf("async_object_add_parent object download failed rc = %d\n", rc);
@@ -272,7 +283,7 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
  * neigh async object
  */
 
-async_obj_neigh_t* async_obj_neigh_find(ip_address_t *nh)
+async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
 {
     switch_service_t  *sys   = NULL;
     async_obj_entry_t *neigh = NULL;
@@ -286,7 +297,7 @@ async_obj_neigh_t* async_obj_neigh_find(ip_address_t *nh)
         obj = (async_obj_neigh_t *)neigh->obj;
         if (obj) {
             if (memcmp(&(obj->nh), nh, sizeof(ip_address_t)) == 0)
-                return obj;
+                return (async_obj_neigh_t**)&(neigh->obj);
         }
     }
 
@@ -356,17 +367,18 @@ int async_obj_neigh_delete_cb(struct async_object_s *obj)
 }
 
 
-async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
+async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *neigh = NULL;
     async_obj_neigh_t  *obj   = NULL;
+    async_obj_neigh_t **objp  = NULL;
 
     if (!(sys = system_get_instance()))
         return NULL;
    
-    if ((obj = async_obj_neigh_find(nh)))
-        return obj;
+    if ((objp = async_obj_neigh_find(nh)))
+        return objp;
 
     if (!(neigh = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
@@ -390,7 +402,7 @@ async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
     obj->type       = ASYNC_OBJ_TYPE_NEIGH;
     pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
-    LIST_INIT(&(obj->sibling_list));
+    LIST_INIT(&(obj->child_list));
 
     obj->object_create     = async_object_create;    
     obj->object_delete     = async_object_delete;
@@ -407,7 +419,7 @@ async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
 
     LIST_INSERT_HEAD(&sys->neigh_list, neigh, system_next);
 
-    return obj;
+    return (async_obj_neigh_t**)&(neigh->obj);
 }
 
 
@@ -416,7 +428,7 @@ async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
  * fib async object
  */
 
-async_obj_fib_t* async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys = NULL;
     async_obj_entry_t  *fib = NULL;
@@ -433,7 +445,7 @@ async_obj_fib_t* async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t 
                 (memcmp(&obj->nh, nh, sizeof(ip_address_t)) == 0)&&
                 (memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
                 (obj->dst_len == dst_len)) {
-                return obj;
+                return (async_obj_fib_t**)&(fib->obj);
             }
         }
     }
@@ -517,9 +529,9 @@ int async_obj_fib_delete_cb(struct async_object_s *obj)
         return -1;
     }
     
-    if (!LIST_EMPTY(&fib->sibling_list)) {
+    if (!LIST_EMPTY(&fib->child_list)) {
         //should not happen
-        printf("async_obj_fib_delete_cb fib sibling not empty\n");
+        printf("async_obj_fib_delete_cb fib child not empty\n");
         return -1;
     }
 
@@ -535,17 +547,18 @@ int async_obj_fib_delete_cb(struct async_object_s *obj)
 }
 
 
-async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *fib   = NULL;
     async_obj_fib_t    *obj   = NULL;
+    async_obj_fib_t   **objp  = NULL;
 
     if (!(sys = system_get_instance()))
         return NULL;
    
-    if ((obj = async_obj_fib_find(ifindex, nh, dst, dst_len)))
-        return obj;
+    if ((objp = async_obj_fib_find(ifindex, nh, dst, dst_len)))
+        return objp;
 
     if (!(fib = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
@@ -571,7 +584,7 @@ async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_
     obj->type       = ASYNC_OBJ_TYPE_FIB;
     pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
-    LIST_INIT(&(obj->sibling_list));
+    LIST_INIT(&(obj->child_list));
 
     obj->object_create     = async_object_create;    
     obj->object_delete     = async_object_delete;    
@@ -590,7 +603,7 @@ async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_
     
     LIST_INSERT_HEAD(&sys->fib_list, fib, system_next);
 
-    return obj;
+    return (async_obj_fib_t**)&(fib->obj);
 }
 
 
@@ -601,7 +614,7 @@ async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_
 int process_async_object(async_obj_entry_t *entry) 
 {
     async_object_t     *obj    = NULL;
-    async_obj_entry_t  *parent = NULL, *sibling = NULL;
+    async_obj_entry_t  *parent = NULL, *child = NULL;
     switch_service_t   *sys    = NULL;
     int                 rc     = 0;
 
@@ -615,6 +628,8 @@ int process_async_object(async_obj_entry_t *entry)
     if(!sys) {
         return -1;
     }
+
+    printf("process_async_object obj %p type %d state %d\n", obj, obj->type, obj->state);
 
     switch(obj->state) {
         case ASYNC_OBJ_STATE_IDLE:
@@ -637,6 +652,7 @@ int process_async_object(async_obj_entry_t *entry)
                     pthread_mutex_lock(&(sys->object_lock));
                     LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
                     pthread_mutex_unlock(&(sys->object_lock));      
+                    printf("process_async_object parent %p state %d\n", parent->obj, parent->obj->state);
                     return -1;              
                 }
             }
@@ -647,13 +663,14 @@ int process_async_object(async_obj_entry_t *entry)
             } else {
                 obj->state = ASYNC_OBJ_STATE_ACTIVE;
             }
+            printf("process_async_object obj %p state %d  create_cb rc %d\n", obj, obj->state, rc);
             //remove from work queue
             entry->obj = NULL;
             free(entry);
             break;
         case ASYNC_OBJ_STATE_DELETING:
-            // check siblings, make sure sibling is empty
-            if (!LIST_EMPTY(&obj->sibling_list)) {
+            // check childs, make sure child is empty
+            if (!LIST_EMPTY(&obj->child_list)) {
                 //keep in DELETING state, put back into work queue
                 pthread_mutex_lock(&(sys->object_lock));
                 LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
@@ -663,23 +680,23 @@ int process_async_object(async_obj_entry_t *entry)
                  
             obj->object_delete_cb(obj);
 
-            //update parent's sibling list
+            //update parent's child list
             LIST_FOREACH(parent, &(obj->parent_list), system_next) {
                 if (!parent->obj) {
                     continue;
                 }
-                if (LIST_EMPTY(&(parent->obj->sibling_list))) {
-                    //this parent's sibling list is empty
+                if (LIST_EMPTY(&(parent->obj->child_list))) {
+                    //this parent's child list is empty
                     continue;
                 }
 
                 pthread_mutex_lock(&(parent->obj->lock));
-                LIST_FOREACH(sibling, &(parent->obj->sibling_list), system_next) {
-                    if (sibling->obj == obj) {
-                        //remove sibling from list
-                        LIST_REMOVE(sibling, system_next);
-                        sibling->obj = NULL;
-                        free(sibling);
+                LIST_FOREACH(child, &(parent->obj->child_list), system_next) {
+                    if (child->obj == obj) {
+                        //remove child from list
+                        LIST_REMOVE(child, system_next);
+                        child->obj = NULL;
+                        free(child);
                     }
                 }
                 pthread_mutex_unlock(&(parent->obj->lock));
@@ -723,7 +740,7 @@ int switchdev_async_obj_main(switch_service_t *sys)
 
         if(!obj) {
             free(entry);
-            break;
+            continue;
         }
 
         process_async_object(entry);

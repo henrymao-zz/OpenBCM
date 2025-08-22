@@ -597,29 +597,29 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     //       msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
 	//       mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);        
     if (msgtype != RTM_DELNEIGH) { 
-        async_obj_neigh_t   *neigh = NULL;
+        async_obj_neigh_t   **neigh = NULL;
 
-        neigh = async_obj_neigh_find(&ip_addr);
+        neigh = async_obj_neigh_find_or_new(&ip_addr);
         if (!neigh) {
-            neigh = async_obj_neigh_create(&ip_addr);
-            memcpy(neigh->mac_addr, mac_addr, ETHER_ADDR_LEN);
-            neigh->local_if = local_if;
+            return 0;
         }
+        memcpy((*neigh)->mac_addr, mac_addr, ETHER_ADDR_LEN);
+        (*neigh)->local_if = local_if;
 
         //TODO, handle neigh MAC change case
-        neigh->object_create((async_object_t *)neigh);
+        (*neigh)->object_create((async_object_t *)(*neigh));
 
         //!!neigh download is triggered at sibling (route object download)
         return rc;
     } else {
-        async_obj_neigh_t   *neigh = NULL;
+        async_obj_neigh_t   **neigh = NULL;
         //del, remove l3 egress object
         neigh = async_obj_neigh_find(&ip_addr);
         if(!neigh) {
             //printf("switchdev_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
             return 0;
         }
-        neigh->object_delete((async_object_t **)&neigh);
+        (*neigh)->object_delete((async_object_t **)neigh);
     }
 
     return (rc);
@@ -722,12 +722,17 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(rtm), len);
 
+    memset(&ip_dst, 0, sizeof(ip_address_t));
     ip_dst.protocol = rtm->rtm_family;
     memcpy(ip_dst.ip, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
 
+    memset(&ip_gw, 0, sizeof(ip_address_t));
     if (tb[RTA_GATEWAY]) {
         ip_gw.protocol = rtm->rtm_family;
         memcpy(ip_gw.ip, RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
+    } else {
+        //printf("handle_route_request missing gateway\n");
+        return 0;
     }
 
     if (tb[RTA_OIF]) {
@@ -745,46 +750,53 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         return 0;
     }
 
-    if (msgtype == RTM_NEWROUTE) {
-        async_obj_neigh_t   *neigh = NULL;
-        async_obj_fib_t     *fib   = NULL;
+    if (rtm->rtm_scope != RT_SCOPE_UNIVERSE || rtm->rtm_type != RTN_UNICAST) {
+          printf("msgtype %d route scope %d type %d ifindex %d dst 0x%x/%d gw 0x%x\n",
+                 msgtype, rtm->rtm_scope, rtm->rtm_type, ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);
+          return 0;
+    }
 
-        //printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-        //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);        
+    if (msgtype == RTM_NEWROUTE) {
+        async_obj_neigh_t   **neigh = NULL;
+        async_obj_fib_t     **fib   = NULL;
+
+        printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+               ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);        
+
         neigh = async_obj_neigh_find(&ip_gw);
 
         // if ip neigh does not exist, create a new obj
-        neigh = async_obj_neigh_find(&ip_gw);
+        neigh = async_obj_neigh_find_or_new(&ip_gw);
         if (!neigh) {
-            neigh = async_obj_neigh_create(&ip_gw);
+            // should not happen
+            return 0;
         }
 
         // if fib does not exist, create a new fib
-        fib = async_obj_fib_find(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
+        fib = async_obj_fib_find_or_new(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
         if (!fib) {
-            fib = async_obj_fib_create(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
+            return 0;
         }
 
-        fib->object_add_parent((async_object_t *)fib, (async_object_t *)neigh);
+        (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
 
-        fib->object_create((async_object_t *)fib);
+        (*fib)->object_create((async_object_t *)*fib);
 
-        fib->object_download((async_object_t *)fib);
+        (*fib)->object_download((async_object_t *)*fib);
         
         return (0);
     } else {
-        async_obj_fib_t     *fib = NULL;
+        async_obj_fib_t     **fib = NULL;
 
-        //printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-        //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
+        printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
+               ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);
         fib = async_obj_fib_find(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
 
         if (!fib) {
-            //if fib exist in pending list, fib should have not programmed into ASIC
             return (0);
         }
 
-        fib->object_delete((async_object_t **)&fib);
+        (*fib)->object_delete((async_object_t **)fib);
     }        
 
     return (0);
@@ -797,7 +809,6 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
     /* Update netlink message counters */
     //system_update_netlink_counters(nlh->nlmsg_type, nlh);
-    //printf("switchdev_route_event_handler %d\n", nlh->nlmsg_type);
 
     switch (nlh->nlmsg_type)
     {
@@ -812,7 +823,6 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
         case RTM_NEWNEIGH:
         case RTM_DELNEIGH:
-	        //printf("switchdev_route_event_handler handle neigh request\n");
 	        switchdev_handle_rtm_neigh(nlh);        
             break;
 
@@ -829,7 +839,6 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
 
         case RTM_NEWROUTE:
         case RTM_DELROUTE:
-            //printf("switchdev_route_event_handler handle route request\n");
             switchdev_handle_rtm_route(nlh);
         default:
             return NL_OK;

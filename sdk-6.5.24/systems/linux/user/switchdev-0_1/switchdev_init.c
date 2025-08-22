@@ -2646,6 +2646,9 @@ int main( int argc, char *argv[] )
     /* Initialize netlink to switchdev kernel module */
     switchdev_netlink_init();
 
+    /* Initialize async object processing thread     */
+    switchdev_async_obj_init();
+
 #ifdef LIB_SWITCHDEV
     /* Get a pseudo tty */
     if (openpty(&ttyfd, &appfd, NULL, NULL, NULL) < 0) {
