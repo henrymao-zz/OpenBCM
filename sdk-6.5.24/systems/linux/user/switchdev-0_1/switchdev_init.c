@@ -2261,8 +2261,7 @@ static void switchdev_system_init(switch_service_t* sys)
     memset(sys, 0, sizeof(switch_service_t));
 
     LIST_INIT(&(sys->lif_list));
-    LIST_INIT(&(sys->fib_list));
-    LIST_INIT(&(sys->neigh_list));
+    LIST_INIT(&(sys->object_db));
 
     LIST_INIT(&(sys->object_list));
     pthread_mutex_init(&sys->object_lock, NULL);
@@ -2309,11 +2308,10 @@ void system_finalize()
         local_if_finalize(local_if);
     }
 
-    /* Release all fib objects */
-    //todo - put all objects in a single hash table
-    while (!LIST_EMPTY(&(sys->fib_list)))
+    /* Release all objects */
+    while (!LIST_EMPTY(&(sys->object_db)))
     {
-        entry = LIST_FIRST(&(sys->fib_list));
+        entry = LIST_FIRST(&(sys->object_db));
         LIST_REMOVE(entry, system_next);
         if (entry->obj) {
             free(entry->obj);

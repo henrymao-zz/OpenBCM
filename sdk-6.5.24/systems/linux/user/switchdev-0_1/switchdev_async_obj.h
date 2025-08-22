@@ -178,13 +178,11 @@ typedef struct switch_service_s {
     //list of interfaces managed by switchdev module
     LIST_HEAD(lif_list_t, local_interface_s)      lif_list;
 
-    //FIB object list (TODO: convert to hash table)
-    LIST_HEAD(fib_list_t, async_obj_entry_s)      fib_list;
+    //object store - in memory storage of async objects 
+    // TODO need to be more efficient
+    LIST_HEAD(async_obj_db_t, async_obj_entry_s)  object_db;
 
-    //ip neigbour object list (TODO: convert to hash table)
-    LIST_HEAD(neigh_list_t, async_obj_entry_s)    neigh_list;
-
-    //object list - work queue for object download
+    //object work queue for object download
     LIST_HEAD(obj_list_t, async_obj_entry_s)      object_list;
 	pthread_mutex_t                               object_lock;
 	pthread_cond_t                                object_cond;
