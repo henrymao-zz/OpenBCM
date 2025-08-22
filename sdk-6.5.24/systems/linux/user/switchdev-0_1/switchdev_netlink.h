@@ -147,56 +147,6 @@ enum switchdev_obj_id {
 };
 
 
-typedef struct local_interface_s {
-    int  ifindex;                 // linux ifindex
-    char name[IF_NAMESIZE+1]; 
-
-    /* hardware information */
-    int hw_port;                  // hardware port id
-    int l3_intf;
-    int vlan;                     // should always be 4095 for routed port
-
-    LIST_ENTRY(local_interface_s) system_next;
-}local_interface_t;
-
-void local_if_finalize(local_interface_t* lif);
-local_interface_t* local_if_create(char* ifname, int hw_port);
-local_interface_t* local_if_find_by_ifindex(int ifindex);
-
-
-
-
-typedef struct switch_service_s {
-    //struct  nl_sock *generic_sock;
-    struct  nl_sock *ucsk;
-    struct  nl_sock *mcsk;
-    struct  nl_sock *route_event_sock;
-    //int     generic_sock_seq;
-
-    int     ucsk_fd;
-    int     mcsk_fd;
-    int     route_event_fd;
-    int     timer_fd;
-    int     epoll_fd;   
-    //int     generic_sock_fd;
-
-    //list of interfaces managed by switchdev module
-    LIST_HEAD(lif_list_t, local_interface_s)      lif_list;
-
-    //FIB object list (TODO: convert to hash table)
-    LIST_HEAD(fib_list_t, fib_entry_s)            fib_list;
-
-    //ip neigbour object list (TODO: convert to hash table)
-    LIST_HEAD(neigh_list_t, neigh_entry_s)        neigh_list;
-
-    //object list - work queue for object download
-    LIST_HEAD(obj_list_t, async_obj_entry_s)      object_list;
-	pthread_mutex_t                               object_lock;
-	pthread_cond_t                                object_cond;
-
-}switch_service_t;
-
 int switchdev_netlink_main(void);
-switch_service_t* system_get_instance();
 
 #endif 

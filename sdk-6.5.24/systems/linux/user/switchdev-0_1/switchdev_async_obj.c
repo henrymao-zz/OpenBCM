@@ -5,12 +5,14 @@
 #include <sys/queue.h>
 
 #include <net/if.h>
+#include <arpa/inet.h>
 
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <fcntl.h>
 #include <linux/netdevice.h>
 #include <linux/if_bridge.h>
+#include <pthread.h>
 
 #ifndef NO_SAL_APPL
 #include <sal/appl/sal.h>
@@ -53,13 +55,12 @@
 
 int async_object_create(async_object_t *obj)
 {
-    async_obj_entry_t *entry = NULL;
     switch_service_t  *sys = NULL;
 
     //put obj into download list, which will be used by obj download thread
 
     if (!(sys = system_get_instance()))
-        return NULL;
+        return -1;
    
     if(!obj) {
         return -1;
@@ -87,27 +88,29 @@ int async_object_create(async_object_t *obj)
 }
 
 
-static void async_object_free(async_object_t *obj)
+static void async_object_free(async_object_t **obj)
 {
-    if(!obj) {
-        return;
-    }
+    async_obj_entry_t      *entry = NULL;
 
-    switch(obj->type) {
-        case ASYNC_OBJ_TYPE_NEIGH:
-            async_obj_neigh_free(obj);
-            break;
-        case ASYNC_OBJ_TYPE_FIB:
-            async_obj_fib_free(obj);
-            break;
-        default:
-            break;
+    if (obj == NULL)
+        return;
+
+    entry = container_of(obj, struct async_obj_entry_s, obj);
+
+    LIST_REMOVE(entry, system_next);
+
+    entry->obj = NULL;
+
+    if (! *obj) {
+        free(*obj);
     }
+    free(entry);
 
     return;
+
 }
 
-int async_object_delete(async_object_t *obj)
+int async_object_delete(async_object_t **obj)
 {
     async_obj_entry_t *entry = NULL;
     switch_service_t  *sys = NULL;
@@ -115,13 +118,13 @@ int async_object_delete(async_object_t *obj)
     //put obj into download list, which will be used by obj download thread
 
     if (!(sys = system_get_instance()))
-        return NULL;
+        return -1;
    
-    if(!obj) {
+    if(!obj || !*obj) {
         return -1;
     }
 
-    switch(obj->state) {
+    switch((*obj)->state) {
         case ASYNC_OBJ_STATE_IDLE:
         case ASYNC_OBJ_STATE_PENDING:
         case ASYNC_OBJ_STATE_FAILED:
@@ -130,7 +133,7 @@ int async_object_delete(async_object_t *obj)
             break;
 
         case ASYNC_OBJ_STATE_ACTIVE:
-            obj->state = ASYNC_OBJ_STATE_DELETING;
+            (*obj)->state = ASYNC_OBJ_STATE_DELETING;
             //add to work queue (sys->object_list)
             entry = (async_obj_entry_t *)malloc(sizeof(async_obj_entry_t));
             if (!entry) {
@@ -138,7 +141,7 @@ int async_object_delete(async_object_t *obj)
                 break;
             }
 
-            entry->obj = obj;
+            entry->obj = *obj;
 
             pthread_mutex_lock(&(sys->object_lock));
             LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
@@ -166,7 +169,7 @@ int async_object_download(async_object_t *obj)
     //put obj into download list, which will be used by obj download thread
 
     if (!(sys = system_get_instance()))
-        return NULL;
+        return -1;
    
     if(!obj) {
         return -1;
@@ -182,7 +185,7 @@ int async_object_download(async_object_t *obj)
         case ASYNC_OBJ_STATE_ACTIVE:
         case ASYNC_OBJ_STATE_DELETING:
             //should not handle object_download at these states
-            return;
+            return -1;
         default:
             break;
 
@@ -211,7 +214,7 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
     int                rc = 0;
 
     if (!(sys = system_get_instance())) {
-        return NULL;
+        return 0;
     }
 
     if(!obj || !parent) {
@@ -269,10 +272,10 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
  * neigh async object
  */
 
-async_obj_t* async_obj_neigh_find(ip_address_t *nh)
+async_obj_neigh_t* async_obj_neigh_find(ip_address_t *nh)
 {
     switch_service_t  *sys   = NULL;
-    neigh_entry_t     *neigh = NULL;
+    async_obj_entry_t *neigh = NULL;
     async_obj_neigh_t *obj = NULL;
 
     if ((sys = system_get_instance()) == NULL)
@@ -280,7 +283,7 @@ async_obj_t* async_obj_neigh_find(ip_address_t *nh)
 
     LIST_FOREACH(neigh, &sys->neigh_list, system_next)
     {
-        obj = neigh->obj;
+        obj = (async_obj_neigh_t *)neigh->obj;
         if (obj) {
             if (memcmp(&(obj->nh), nh, sizeof(ip_address_t)) == 0)
                 return obj;
@@ -290,31 +293,13 @@ async_obj_t* async_obj_neigh_find(ip_address_t *nh)
     return NULL;
 }
 
-void async_obj_neigh_free(async_obj_neigh_t *obj)
-{
-    neigh_entry_t      *neigh = NULL;
-
-    if (obj == NULL)
-        return;
-
-    neigh = container_of(obj, neigh_entry_t, obj);
-
-    LIST_REMOVE(neigh, system_next);
-
-    free(obj);
-    free(neigh);
-
-    return;
-}
-
-
-
 
 int async_obj_neigh_create_cb(struct async_object_s *obj)
 {
     async_obj_neigh_t *neigh = (async_obj_neigh_t *)obj;
     bcm_l3_egress_t    egress_object;
     int                object_id = -1;
+    int                rc        = 0;
 
     printf("async_obj_neigh_create_cb enter\n");
 
@@ -354,6 +339,7 @@ int async_obj_neigh_update_cb(struct async_object_s *obj)
 int async_obj_neigh_delete_cb(struct async_object_s *obj)
 {
     async_obj_neigh_t *neigh = (async_obj_neigh_t *)obj;
+    int                rc    = 0;
 
     if (!neigh) {
         return -1;
@@ -373,7 +359,7 @@ int async_obj_neigh_delete_cb(struct async_object_s *obj)
 async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
 {
     switch_service_t   *sys   = NULL;
-    neigh_entry_t      *neigh = NULL;
+    async_obj_entry_t  *neigh = NULL;
     async_obj_neigh_t  *obj   = NULL;
 
     if (!(sys = system_get_instance()))
@@ -382,7 +368,7 @@ async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
     if ((obj = async_obj_neigh_find(nh)))
         return obj;
 
-    if (!(neigh = (neigh_entry_t*)malloc(sizeof(neigh_entry_t))))
+    if (!(neigh = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
         printf("neigh entry malloc failed nh 0x%x \n",  nh->ip[0]);
         return NULL;
@@ -390,13 +376,13 @@ async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
 
     if (!(obj = (async_obj_neigh_t*)malloc(sizeof(async_obj_neigh_t))))
     {
-        free(neigh)
+        free(neigh);
         printf("neigh object malloc failed nh 0x%x \n",  nh->ip[0]);
         return NULL;
     }
 
-    memset(neigh, 0, sizeof(neigh_entry_t));
-    neigh->obj = obj;
+    memset(neigh, 0, sizeof(async_obj_entry_t));
+    neigh->obj = (async_object_t *)obj;
 
     memset(obj, 0, sizeof(async_obj_neigh_t));
     //initialize object base
@@ -430,22 +416,22 @@ async_obj_neigh_t* async_obj_neigh_create(ip_address_t *nh)
  * fib async object
  */
 
-async_obj_t* async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
+async_obj_fib_t* async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
-    switch_service_t *sys = NULL;
-    fib_entry_t      *fib = NULL;
-    async_obj_fib_t  *obj = NULL;
+    switch_service_t   *sys = NULL;
+    async_obj_entry_t  *fib = NULL;
+    async_obj_fib_t    *obj = NULL;
 
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
     LIST_FOREACH(fib, &(sys->fib_list), system_next)
     {
-        obj = fib->obj;
+        obj = (async_obj_fib_t *)fib->obj;
         if (obj) {
             if ((obj->ifindex == ifindex) &&
                 (memcmp(&obj->nh, nh, sizeof(ip_address_t)) == 0)&&
-                (memcmp(&obj->dst,dst, sizeof(ip_address_t)) == 0) &&
+                (memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
                 (obj->dst_len == dst_len)) {
                 return obj;
             }
@@ -455,28 +441,8 @@ async_obj_t* async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst
     return NULL;
 }
 
-void async_obj_fib_free(async_obj_fib_t *obj)
-{
-    fib_entry_t      *fib = NULL;
 
-    if (obj == NULL)
-        return;
-
-    fib = container_of(obj, fib_entry_t, obj);
-
-    if (fib == NULL)
-        return;
-
-    LIST_REMOVE(fib, system_next);
-
-    free(obj);
-    free(fib);
-
-    return;
-}
-
-
-static void ipv6_create_mask(bcm_ip6_t *ip6_mask, uint32 prefix_length) {
+static void ipv6_create_mask(uint8 *ip6_mask, uint32 prefix_length) {
     int i;
 
     for (i=15; i>=0; i--) {
@@ -496,26 +462,22 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
     async_obj_entry_t *entry = NULL;
     async_obj_neigh_t *neigh = NULL;
     bcm_l3_route_t     route_info;
-    int                object_id = -1;
+    int                rc    = 0;
 
     if (!fib) {
         return -1;
     }
 
-    if (!fib->local_if) {
-        return -1;
-    }
-    
-    LIST_FOREACH(entry, &fib->parent_list, system_next)
+    LIST_FOREACH(entry, &(fib->parent_list), system_next)
     {
-        if(entry->obj->type == ASYNC_OBJ_NEIGH) {
-            neigh = entry->obj;
+        if(entry->obj->type == ASYNC_OBJ_TYPE_NEIGH) {
+            neigh = (async_obj_neigh_t *)entry->obj;
             break;
         }
     }
     if (!neigh) {
         //should not happen
-        print("async_obj_fib_create_cb neigh parent not found\n");
+        printf("async_obj_fib_create_cb neigh parent not found\n");
         return -1;
     }
 
@@ -523,12 +485,12 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
 
     bcm_l3_route_t_init(&route_info);
 
-    if (fib->ip_dst.protocol == AF_INET) {
-        route_info.l3a_subnet  = ntohl(fib->ip_dst.ip[0]);
+    if (fib->dst.protocol == AF_INET) {
+        route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
         route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
     } else {
         route_info.l3a_flags = BCM_L3_IP6;
-        memcpy(route_info.l3a_ip6_net, fib->ip_dst.ip, 16);
+        memcpy(route_info.l3a_ip6_net, fib->dst.ip, 16);
         ipv6_create_mask(route_info.l3a_ip6_mask, fib->dst_len);
     } 
     route_info.l3a_intf = neigh->object_id;
@@ -549,6 +511,7 @@ int async_obj_fib_delete_cb(struct async_object_s *obj)
 {
     async_obj_fib_t *fib = (async_obj_fib_t *)obj;
     bcm_l3_route_t   route_info;
+    int              rc = 0;
 
     if (!fib) {
         return -1;
@@ -556,12 +519,12 @@ int async_obj_fib_delete_cb(struct async_object_s *obj)
     
     if (!LIST_EMPTY(&fib->sibling_list)) {
         //should not happen
-        print("async_obj_fib_delete_cb fib sibling not empty\n");
+        printf("async_obj_fib_delete_cb fib sibling not empty\n");
         return -1;
     }
 
     bcm_l3_route_t_init(&route_info);
-    route_info.l3a_subnet  = ntohl(fib->ip_dst.ip[0]);
+    route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
     route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
     rc = bcm_l3_route_delete(0, &route_info);
 
@@ -575,7 +538,7 @@ int async_obj_fib_delete_cb(struct async_object_s *obj)
 async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys   = NULL;
-    fib_entry_t        *fib   = NULL;
+    async_obj_entry_t  *fib   = NULL;
     async_obj_fib_t    *obj   = NULL;
 
     if (!(sys = system_get_instance()))
@@ -584,14 +547,14 @@ async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_
     if ((obj = async_obj_fib_find(ifindex, nh, dst, dst_len)))
         return obj;
 
-    if (!(fib = (fib_entry_t*)malloc(sizeof(fib_entry_t))))
+    if (!(fib = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
         printf("fib entry malloc failed ifindex %d ipv4 0x%x/%d nh 0x%x ", 
                ifindex, dst->ip[0], dst_len, nh->ip[0]);
         return NULL;
     }
 
-    if (!(obj = (async_obj_neigh_t*)malloc(sizeof(async_obj_neigh_t))))
+    if (!(obj = (async_obj_fib_t*)malloc(sizeof(async_obj_fib_t))))
     {
         free(fib);
         printf("fib object malloc failedifindex %d ipv4 0x%x/%d nh 0x%x ", 
@@ -599,8 +562,8 @@ async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_
         return NULL;
     }
 
-    memset(fib, 0, sizeof(fib_entry_t));
-    fib->obj = obj;
+    memset(fib, 0, sizeof(async_obj_entry_t));
+    fib->obj = (async_object_t *)obj;
 
     memset(obj, 0, sizeof(async_obj_fib_t));
     //initialize object base
@@ -620,7 +583,6 @@ async_obj_fib_t* async_obj_fib_create(int ifindex, ip_address_t *nh, ip_address_
     obj->object_delete_cb  = async_obj_fib_delete_cb;
 
     //initialize object specific
-    obj->object_id  = -1;
     obj->ifindex    = ifindex;
     obj->dst_len    = dst_len;
     memcpy(&obj->nh, nh, sizeof(ip_address_t));
@@ -640,10 +602,17 @@ int process_async_object(async_obj_entry_t *entry)
 {
     async_object_t     *obj    = NULL;
     async_obj_entry_t  *parent = NULL, *sibling = NULL;
+    switch_service_t   *sys    = NULL;
+    int                 rc     = 0;
 
     obj = entry->obj;
 
     if(!obj) {
+        return -1;
+    }
+
+    sys = system_get_instance();
+    if(!sys) {
         return -1;
     }
 
@@ -658,7 +627,7 @@ int process_async_object(async_obj_entry_t *entry)
 
         case ASYNC_OBJ_STATE_PENDING:  
             // check parents, make sure all parents are ACTIVE
-            LIST_FOREACH(parent, obj->parent_list, system_next) {
+            LIST_FOREACH(parent, &(obj->parent_list), system_next) {
                 if (!parent->obj) {
                     //should not happen, ignore this parent
                     continue;
@@ -695,17 +664,17 @@ int process_async_object(async_obj_entry_t *entry)
             obj->object_delete_cb(obj);
 
             //update parent's sibling list
-            LIST_FOREACH(parent, obj->parent_list, system_next) {
+            LIST_FOREACH(parent, &(obj->parent_list), system_next) {
                 if (!parent->obj) {
                     continue;
                 }
-                if (LIST_EMPTY(parent->obj->sibling_list)) {
+                if (LIST_EMPTY(&(parent->obj->sibling_list))) {
                     //this parent's sibling list is empty
                     continue;
                 }
 
-                pthread_mutex_lock(&(parent->lock));
-                LIST_FOREACH(sibling, parent->obj->sibling_list, system_next) {
+                pthread_mutex_lock(&(parent->obj->lock));
+                LIST_FOREACH(sibling, &(parent->obj->sibling_list), system_next) {
                     if (sibling->obj == obj) {
                         //remove sibling from list
                         LIST_REMOVE(sibling, system_next);
@@ -713,7 +682,7 @@ int process_async_object(async_obj_entry_t *entry)
                         free(sibling);
                     }
                 }
-                pthread_mutex_unlock(&(parent->lock));
+                pthread_mutex_unlock(&(parent->obj->lock));
             }
 
             //delete is always successful ???
@@ -726,13 +695,13 @@ int process_async_object(async_obj_entry_t *entry)
             break;
     }
 
+    return 0;
 }
 
 int switchdev_async_obj_main(switch_service_t *sys)
 {
     async_obj_entry_t *entry = NULL;
     async_object_t    *obj   = NULL;
-    int                rc    = 0;
 
     if (!sys) {
         return 0;

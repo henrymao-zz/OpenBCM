@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/queue.h>
 #include <net/if.h>
+#include <pthread.h>
 
 #ifndef NO_SAL_APPL
 #include <sal/appl/sal.h>
@@ -41,6 +42,7 @@
 #include <opennsa/range.h>
 
 #include "switchdev_netlink.h"
+#include "switchdev_async_obj.h"
 
 //#include <soc/esw/cancun.h>
 /*
@@ -2294,7 +2296,7 @@ void system_finalize()
 {
     static switch_service_t *sys      = NULL;
     local_interface_t       *local_if = NULL;
-    fib_entry_t             *fib      = NULL;
+    async_obj_entry_t       *entry    = NULL;
 
     if ((sys = system_get_instance()) == NULL )
         return;
@@ -2308,11 +2310,16 @@ void system_finalize()
     }
 
     /* Release all fib objects */
+    //todo - put all objects in a single hash table
     while (!LIST_EMPTY(&(sys->fib_list)))
     {
-        fib = LIST_FIRST(&(sys->fib_list));
-        LIST_REMOVE(fib, system_next);
-        fib_entry_finalize(fib);
+        entry = LIST_FIRST(&(sys->fib_list));
+        LIST_REMOVE(entry, system_next);
+        if (entry->obj) {
+            free(entry->obj);
+        }
+        entry->obj = NULL;
+        free(entry);
     }    
 }
 
@@ -2350,7 +2357,7 @@ switchdev_async_obj_thread(void *cookie)
     COMPILER_REFERENCE(cookie);
 
 
-    switchdev_async_obj_main();
+    switchdev_async_obj_main(sys);
 
     sal_thread_exit(0);
 }

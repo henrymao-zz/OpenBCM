@@ -481,7 +481,7 @@ $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 
 $(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
-	$(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
+	$(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
 	-lopennsa $(shell pkg-config --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) -o $@
 
 $(BCM): $(BCM).dbg
@@ -493,7 +493,7 @@ ifeq ($(C_CPP_CODE_MIX), TRUE)
 LINKER := $(CXX)
 endif
 
-$(BCM).dbg: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o \
+$(BCM).dbg: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o \
 	${PLATFORM_DEFINES_OBJ}
 	@rm -f $@	# Prevent core dump if currently running
 ifeq (1,$(LINK_STATIC))
@@ -501,7 +501,7 @@ ifeq (1,$(LINK_STATIC))
 else
 	@echo Linking $@ dynamically # This is needed for error parsing
 endif
-	$(LINKER) $(CFLAGS) -o $@ $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o \
+	$(LINKER) $(CFLAGS) -o $@ $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o \
 	$(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) \
 	-Wl,--start-group ${PLATFORM_DEFINES_OBJ} $(BCM_LIBS_BLD)  -Wl,--end-group $(LDFLAGS)
 
@@ -571,6 +571,7 @@ endif
 	$(RM) $(BLDDIR)/platform_defines.c $(BLDDIR)/platform_defines.o
 	$(RM) $(BLDDIR)/switchdev_init.o
 	$(RM) $(BLDDIR)/switchdev_netlink.o
+	$(RM) $(BLDDIR)/switchdev_async_obj.o
 	$(RM) $(BLDDIR)/switchdev_dstty.o
 	$(RM) $(KERNEL_BDE) $(USER_BDE) $(BCM) $(BCM).dbg
 	$(RM) $(BCM_KNET)

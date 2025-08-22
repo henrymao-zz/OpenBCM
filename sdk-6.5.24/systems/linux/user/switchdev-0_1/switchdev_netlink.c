@@ -63,6 +63,7 @@
 #include <opennsa/l3.h>
 
 #include "switchdev_netlink.h"
+#include "switchdev_async_obj.h"
 
 #define prerr(...) fprintf(stderr, "error: " __VA_ARGS__)
 
@@ -606,19 +607,19 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
         }
 
         //TODO, handle neigh MAC change case
-        neigh->object_create(neigh);
+        neigh->object_create((async_object_t *)neigh);
 
         //!!neigh download is triggered at sibling (route object download)
         return rc;
     } else {
-        neigh_entry_t   *neigh = NULL;
+        async_obj_neigh_t   *neigh = NULL;
         //del, remove l3 egress object
-        neigh = neigh_entry_find(&(sys->neigh_list), &ip_addr);
+        neigh = async_obj_neigh_find(&ip_addr);
         if(!neigh) {
             //printf("switchdev_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
             return 0;
         }
-        neigh->object_delete(neigh);
+        neigh->object_delete((async_object_t **)&neigh);
     }
 
     return (rc);
@@ -705,7 +706,6 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     ip_address_t       ip_dst, ip_gw;
     uint32_t           ifindex = 0;
     char               ifname[IF_NAMESIZE+1];
-    int                rc = 0;
     local_interface_t *local_if = NULL;
     switch_service_t  *sys   = NULL;
 
@@ -754,9 +754,9 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         neigh = async_obj_neigh_find(&ip_gw);
 
         // if ip neigh does not exist, create a new obj
-        neigh = async_obj_neigh_find(&ip_addr);
+        neigh = async_obj_neigh_find(&ip_gw);
         if (!neigh) {
-            neigh = async_obj_neigh_create(&ip_addr);
+            neigh = async_obj_neigh_create(&ip_gw);
         }
 
         // if fib does not exist, create a new fib
@@ -765,16 +765,15 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             fib = async_obj_fib_create(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
         }
 
-        fib->object_add_parent(fib, neigh);
+        fib->object_add_parent((async_object_t *)fib, (async_object_t *)neigh);
 
-        fib->object_create(fib);
+        fib->object_create((async_object_t *)fib);
 
-        fib->object_download(fib);
+        fib->object_download((async_object_t *)fib);
         
         return (0);
     } else {
-        fib_entry_t      *fib = NULL;
-        bcm_l3_route_t    route_info;
+        async_obj_fib_t     *fib = NULL;
 
         //printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
         //       ifindex, ipv4_dst, rtm->rtm_dst_len, ipv4_gw);
@@ -785,7 +784,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             return (0);
         }
 
-        fib->object_delete(fib);
+        fib->object_delete((async_object_t **)&fib);
     }        
 
     return (0);
