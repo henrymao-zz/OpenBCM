@@ -16,6 +16,7 @@ typedef struct ip_address_s {
 
 // async object base definition
 enum object_state_e {
+    ASYNC_OBJ_STATE_NEW,
     ASYNC_OBJ_STATE_IDLE,
 	ASYNC_OBJ_STATE_PENDING,
 	ASYNC_OBJ_STATE_ACTIVE,

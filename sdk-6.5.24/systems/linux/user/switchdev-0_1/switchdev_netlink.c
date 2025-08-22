@@ -609,7 +609,10 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
         //TODO, handle neigh MAC change case
         (*neigh)->object_create((async_object_t *)(*neigh));
 
-        //!!neigh download is triggered at sibling (route object download)
+        // special handling for neigh object, trigger download only if there is child
+        if (!LIST_EMPTY(&(*neigh)->child_list)) {
+            (*neigh)->object_download((async_object_t *)*neigh);
+        }
         return rc;
     } else {
         async_obj_neigh_t   **neigh = NULL;
@@ -763,8 +766,6 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
                ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);        
 
-        neigh = async_obj_neigh_find(&ip_gw);
-
         // if ip neigh does not exist, create a new obj
         neigh = async_obj_neigh_find_or_new(&ip_gw);
         if (!neigh) {
@@ -775,6 +776,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         // if fib does not exist, create a new fib
         fib = async_obj_fib_find_or_new(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
         if (!fib) {
+            // should not happen
             return 0;
         }
 

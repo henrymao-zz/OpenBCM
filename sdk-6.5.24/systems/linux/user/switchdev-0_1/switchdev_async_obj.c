@@ -69,6 +69,9 @@ int async_object_create(async_object_t *obj)
     pthread_mutex_lock(&obj->lock);
 
     switch(obj->state) {
+        case ASYNC_OBJ_STATE_NEW:
+            obj->state = ASYNC_OBJ_STATE_IDLE;
+            break;
         case ASYNC_OBJ_STATE_IDLE:
         case ASYNC_OBJ_STATE_PENDING:
         case ASYNC_OBJ_STATE_ACTIVE:
@@ -127,6 +130,7 @@ int async_object_delete(async_object_t **obj)
     printf("async_object_delete type %d state %d\n", (*obj)->type, (*obj)->state); 
 
     switch((*obj)->state) {
+        case ASYNC_OBJ_STATE_NEW:
         case ASYNC_OBJ_STATE_IDLE:
         case ASYNC_OBJ_STATE_PENDING:
         case ASYNC_OBJ_STATE_FAILED:
@@ -183,13 +187,18 @@ int async_object_download(async_object_t *obj)
         case ASYNC_OBJ_STATE_IDLE:
             obj->state = ASYNC_OBJ_STATE_PENDING;
             break;
-        
         case ASYNC_OBJ_STATE_PENDING:
+            //could be triggered again by parent
+            break;
+
+        case ASYNC_OBJ_STATE_NEW:
         case ASYNC_OBJ_STATE_FAILED:
         case ASYNC_OBJ_STATE_ACTIVE:
-        case ASYNC_OBJ_STATE_DELETING:
             //should not handle object_download at these states
             return -1;
+        case ASYNC_OBJ_STATE_DELETING:
+            //could be triggered again by child
+            break;
         default:
             break;
 
@@ -229,8 +238,10 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
 
     printf("async_object_add_parent...\n");
 
-    //only allowed if obj->state is ASYNC_OBJ_STATE_IDLE
-    if (obj->state != ASYNC_OBJ_STATE_IDLE) {
+    //only allowed if obj->state is ASYNC_OBJ_STATE_IDLE or NEW
+    if (obj->state != ASYNC_OBJ_STATE_IDLE &&
+        obj->state != ASYNC_OBJ_STATE_NEW) {
+        printf("async_object_add_parent obj %p state %d not allowed\n", obj, obj->state); 
         return -1;
     }
 
@@ -393,12 +404,14 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
         return NULL;
     }
 
+    printf("async_obj_neigh_find_or_new new obj for 0x%x\n", nh->ip[0]);
+
     memset(neigh, 0, sizeof(async_obj_entry_t));
     neigh->obj = (async_object_t *)obj;
 
     memset(obj, 0, sizeof(async_obj_neigh_t));
     //initialize object base
-    obj->state      = ASYNC_OBJ_STATE_IDLE;
+    obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_NEIGH;
     pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
@@ -575,12 +588,15 @@ async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_ad
         return NULL;
     }
 
+    printf("async_obj_fib_find_or_new new obj ifindex %d ip 0x%x/%d nh 0x%x\n",
+           ifindex, dst->ip[0], dst_len, nh->ip[0]);
+
     memset(fib, 0, sizeof(async_obj_entry_t));
     fib->obj = (async_object_t *)obj;
 
     memset(obj, 0, sizeof(async_obj_fib_t));
     //initialize object base
-    obj->state      = ASYNC_OBJ_STATE_IDLE;
+    obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_FIB;
     pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
@@ -632,6 +648,7 @@ int process_async_object(async_obj_entry_t *entry)
     printf("process_async_object obj %p type %d state %d\n", obj, obj->type, obj->state);
 
     switch(obj->state) {
+        case ASYNC_OBJ_STATE_NEW:
         case ASYNC_OBJ_STATE_IDLE:
         case ASYNC_OBJ_STATE_FAILED:
         case ASYNC_OBJ_STATE_ACTIVE:
@@ -683,10 +700,10 @@ int process_async_object(async_obj_entry_t *entry)
         case ASYNC_OBJ_STATE_DELETING:
             // check childs, make sure child is empty
             if (!LIST_EMPTY(&obj->child_list)) {
-                //keep in DELETING state, put back into work queue
-                pthread_mutex_lock(&(sys->object_lock));
-                LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
-                pthread_mutex_unlock(&(sys->object_lock));      
+                //remove from workqueue, will be add back if parent delete success
+                printf("process_async_object %p child not NULL, skip\n", obj);
+                entry->obj = NULL;
+                free(entry);
                 return -1;              
             }
                  
@@ -697,27 +714,31 @@ int process_async_object(async_obj_entry_t *entry)
                 if (!parent->obj) {
                     continue;
                 }
-                if (LIST_EMPTY(&(parent->obj->child_list))) {
-                    //this parent's child list is empty
-                    continue;
-                }
-
-                pthread_mutex_lock(&(parent->obj->lock));
-                LIST_FOREACH(child, &(parent->obj->child_list), system_next) {
-                    if (child->obj == obj) {
-                        //remove child from list
-                        LIST_REMOVE(child, system_next);
-                        child->obj = NULL;
-                        free(child);
+                if (!LIST_EMPTY(&(parent->obj->child_list))) {
+                    pthread_mutex_lock(&(parent->obj->lock));
+                    LIST_FOREACH(child, &(parent->obj->child_list), system_next) {
+                        if (child->obj == obj) {
+                            //remove child from list
+                            LIST_REMOVE(child, system_next);
+                            child->obj = NULL;
+                            free(child);
+                        }
                     }
+                    pthread_mutex_unlock(&(parent->obj->lock));
                 }
-                pthread_mutex_unlock(&(parent->obj->lock));
+                //check if there is parent waiting for delete, put them into workqueue
+                if(parent->obj->state == ASYNC_OBJ_STATE_DELETING) {
+                    parent->obj->object_download(parent->obj);
+                }
             }
 
-            //delete is always successful ???
+            //delete is always successful
             free(obj);
             entry->obj = NULL;
             free(entry);
+
+            //remove from sys list
+
             break;
             
         default:
