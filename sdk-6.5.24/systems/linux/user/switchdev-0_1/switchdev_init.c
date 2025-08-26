@@ -1,8 +1,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
-#include <pty.h>
 #include <errno.h>
 #include <sys/queue.h>
 #include <net/if.h>
@@ -131,7 +131,6 @@ switch_service_t* system_get_instance()
 void system_finalize()
 {
     static switch_service_t *sys      = NULL;
-    local_interface_t       *local_if = NULL;
     async_obj_entry_t       *entry    = NULL;
 
     if ((sys = system_get_instance()) == NULL )
@@ -140,9 +139,13 @@ void system_finalize()
     /* Release all port objects */
     while (!LIST_EMPTY(&(sys->switch_db.lif_list)))
     {
-        local_if = LIST_FIRST(&(sys->switch_db.lif_list));
-        LIST_REMOVE(local_if, system_next);
-        local_if_finalize(local_if);
+        entry = LIST_FIRST(&(sys->switch_db.lif_list));
+        LIST_REMOVE(entry, system_next);
+        if (entry->obj) {
+            free(entry->obj);
+        }
+        entry->obj = NULL;
+        free(entry);
     }
 
     /* Release all objects */
@@ -177,9 +180,9 @@ int switchdev_netlink_init(void)
     if (switchdev_netlink_thread_id == SAL_THREAD_ERROR) {
         sal_thread_destroy(switchdev_netlink_thread_id);
         switchdev_netlink_thread_id = SAL_THREAD_ERROR;
-        return BCM_E_MEMORY;
+        return -1;
     }
-    return BCM_E_NONE;
+    return 0;
 }
 
 
@@ -190,38 +193,38 @@ int main( int argc, char *argv[] )
 {
     int                   rc     = 0;
     switch_service_t     *sys    = NULL;
-    async_obj_switch_t  **switch = NULL;
+    async_obj_switch_t  **sw     = NULL;
     async_obj_vlan_t    **vlan   = NULL;
 
     //parse argv
 
     if ((sys = system_get_instance()) == NULL )
-        return;    
+        return -1;    
 
     // start system processes
     /* Initialize netlink to switchdev kernel module */
     switchdev_netlink_init();
 
     //create switch object - hardcode for unit 0 for now
-    switch = async_obj_switch_find_or_new(0);
-    if (!switch) {
+    sw = async_obj_switch_find_or_new(0);
+    if (!sw || !(*sw)) {
         goto init_fail;
     }
-    switch->unit       = 0;
-    switch->route_vlan = 4095;
-    (*switch)->object_create((async_object_t *)*switch);
-    (*switch)->object_download((async_object_t *)*switch);
+    (*sw)->unit       = 0;
+    (*sw)->route_vlan = 4095;
+    (*sw)->object_create((async_object_t *)*sw);
+    (*sw)->object_download((async_object_t *)*sw);
 
 
     //Create vlan 4095 - default vlan for routed port
-    vlan = async_obj_vlan_find_or_new(switch->route_vlan);
+    vlan = async_obj_vlan_find_or_new((*sw)->route_vlan);
     if (!vlan) {
         return -1;
     }    
     (*vlan)->if_class        = 1;
     (*vlan)->block_broadcast = 1;
 
-    (*vlan)->object_add_parent((async_object_t *)*vlan, (async_object_t *)*switch);
+    (*vlan)->object_add_parent((async_object_t *)*vlan, (async_object_t *)*sw);
     (*vlan)->object_create((async_object_t *)*vlan);
     (*vlan)->object_download((async_object_t *)*vlan);
 

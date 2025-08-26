@@ -3,8 +3,8 @@
 
 // common data structure 
 typedef struct ip_address_s {
-    uint32 protocol;      //AF_INET4 AF_INET6
-    uint32 ip[4];
+    uint32_t protocol;      //AF_INET4 AF_INET6
+    uint32_t ip[4];
 }ip_address_t;
 
 #ifndef container_of
@@ -150,8 +150,8 @@ typedef struct async_obj_intf_s {
     int              type;    
 	pthread_mutex_t  lock;
 
-	LIST_HEAD(obj_vlan_parent_list_t, async_obj_entry_s)   parent_list;
-	LIST_HEAD(obj_vlan_child_list_t, async_obj_entry_s)    child_list;
+	LIST_HEAD(obj_intf_parent_list_t, async_obj_entry_s)   parent_list;
+	LIST_HEAD(obj_intf_child_list_t, async_obj_entry_s)    child_list;
 
     object_create_func     object_create;
     object_delete_func     object_delete;
@@ -179,11 +179,6 @@ typedef struct async_obj_intf_s {
 
 async_obj_intf_t** async_obj_intf_new(char* ifname);
 async_obj_intf_t** async_obj_intf_find(int ifindex);
-
-void local_if_finalize(local_interface_t* lif);
-local_interface_t* local_if_find_by_ifindex(int ifindex);
-
-
 
 /******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_NEIGH                                                               */
@@ -213,8 +208,9 @@ typedef struct async_obj_neigh_s {
     //neigh specfic	
     int                object_id;
     ip_address_t       nh;
-    uint8              mac_addr[ETHER_ADDR_LEN];
-    local_interface_t *local_if;
+    uint8_t            mac_addr[ETHER_ADDR_LEN];
+    int                ifindex;   //linux ifindex
+
 } async_obj_neigh_t;
 
 async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh);

@@ -37,13 +37,16 @@
  */
 #include <bcm/port.h>
 #include <bcm/stg.h>
+#include <bcm/l2.h>
 
 #if defined(BCM_LTSW_SUPPORT)
 #include <appl/diag/sysconf_ltsw.h>
 #endif
 
+#include <opennsa/l2.h>
 #include <opennsa/link.h>
 #include <opennsa/l3.h>
+#include <opennsa/range.h>
 
 #include "switchdev_async_obj.h"
 
@@ -1883,7 +1886,6 @@ int switchdev_vlan_init(int unit)
     int                      station_id;
     bcm_l2_station_t         l2_station;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    bcm_vlan_block_t         vlan_block;
     bcm_if_t                 host_l3_interface;
     bcm_l3_route_t           route_info;
 
@@ -2051,8 +2053,6 @@ switchdev_broadcom_thread(void *cookie)
         break;
     }
 
-    system_finalize();
-
     linux_bde_destroy( bde );
     sal_thread_exit(0);
 }
@@ -2121,9 +2121,7 @@ int async_obj_switch_create_cb(struct async_object_s *obj)
         exit( 1 );
     }
 
-#ifdef LIB_SWITCHDEV
-
-#else
+#if 0
     for( i = 1; i < argc; i++ ){
         if( !strcmp(argv[i], "-r") || !strcmp(argv[i], "--reload") ){
             sal_boot_flags_set( sal_boot_flags_get() | BOOT_F_RELOAD );
@@ -2367,6 +2365,7 @@ int async_obj_vlan_create_cb(struct async_object_s *obj)
     async_obj_vlan_t *vlan = (async_obj_vlan_t *)obj;
     bcm_vlan_control_vlan_t  vlan_control;
     bcm_port_config_t        port_config;
+    bcm_vlan_block_t         vlan_block;
 
     if(!vlan) {
         return -1;
@@ -2394,7 +2393,7 @@ int async_obj_vlan_create_cb(struct async_object_s *obj)
         vlan_block.unknown_multicast = port_config.all; 
         vlan_block.unknown_unicast   = port_config.all; 
         vlan_block.broadcast         = port_config.all;    
-        bcm_vlan_block_set(unit, route_vlan, &vlan_block);
+        bcm_vlan_block_set(unit, vlan->vid, &vlan_block);
     }
 
     return rc;
@@ -2402,14 +2401,12 @@ int async_obj_vlan_create_cb(struct async_object_s *obj)
 
 int async_obj_vlan_update_cb(struct async_object_s *obj)
 {
-
-
+    return 0;
 }
 
 int async_obj_vlan_delete_cb(struct async_object_s *obj)
 {
-
-
+   return 0;
 }
 
 /******************************************************************************************/
@@ -2423,12 +2420,12 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
     bcm_if_t                 ingress_if_egr;
     bcm_l3_ingress_t         l3_ingress;
     bcm_l3_intf_t            l3_intf;
-    bcm_error_t              rv = BCM_E_NONE;        
+    bcm_error_t              rv       = BCM_E_NONE;        
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    async_obj_switch_t     **switch = NULL;
+    async_obj_switch_t     **sw       = NULL;
 
-    switch = async_obj_switch_find(unit);
-    if (!switch || !(*switch)) {
+    sw = async_obj_switch_find(unit);
+    if (!sw || !(*sw)) {
         printf("switchdev_l3_port_init switch NULL\n");
         return -1;
     }
@@ -2439,7 +2436,7 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
     memcpy(l2_station.dst_mac, system_mac, 6);
     memcpy(l2_station.dst_mac_mask, mac_mask, 6);
     l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
-    l2_station.vlan         = (*switch)->route_vlan;
+    l2_station.vlan         = (*sw)->route_vlan;
     l2_station.vlan_mask    = 0xfff;
     l2_station.src_port     = port;
     l2_station.src_port_mask = 0x00ff;
@@ -2452,7 +2449,7 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
     /* L3 Interface */
     bcm_l3_intf_t_init(&l3_intf);
     memcpy(l3_intf.l3a_mac_addr, system_mac,6);
-    l3_intf.l3a_vid = (*switch)->route_vlan;
+    l3_intf.l3a_vid = (*sw)->route_vlan;
     l3_intf.l3a_vrf = 0;
     //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
     rv = bcm_l3_intf_create(unit, &l3_intf);
@@ -2493,12 +2490,13 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
 
 int async_obj_intf_create_cb(struct async_object_s *obj)
 {
-    async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
     int                  rc        = 0;
     bcm_knet_netif_t     netif;
     bcm_knet_filter_t    filter;  
     int                  unit      = 0;
-    async_obj_switch_t **switch    = NULL;
+    bcm_pbmp_t           pbmp;
+    async_obj_switch_t **sw        = NULL;
+    async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
 
 
     //printf("async_obj_intf_create_cb enter\n");
@@ -2507,8 +2505,8 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
         return -1;
     }
 
-    switch = async_obj_switch_find(unit);
-    if (!switch || !(*switch)) {
+    sw = async_obj_switch_find(unit);
+    if (!sw || !(*sw)) {
         printf("async_obj_intf_create_cb switch NULL\n");
         return -1;
     }    
@@ -2524,9 +2522,10 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
     netif.cb_user_data = 0;
 
     sal_strncpy(netif.name, intf->name, sizeof(netif.name) - 1);
+    netif.name[sizeof(netif.name) - 1] = '\0';
 
-    if ((rv = bcm_knet_netif_create(unit, &netif)) < 0) {
-        printf("Error creating network interface:%s port %d rv %d\n",netif.name, netif.port, rv );
+    if ((rc = bcm_knet_netif_create(unit, &netif)) < 0) {
+        printf("Error creating network interface:%s port %d rc %d\n",netif.name, netif.port, rc );
     } else {
         printf("Creating Interface %s port %d\n",netif.name, netif.port);
 	}
@@ -2547,8 +2546,8 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
     filter.m_ingport = netif.port;
     filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
 
-    if ((rv = bcm_knet_filter_create(unit, &filter)) < 0) {
-        printf("Error creating packet filter: %d\n", rv);
+    if ((rc = bcm_knet_filter_create(unit, &filter)) < 0) {
+        printf("Error creating packet filter: %d\n", rc);
     }   
 
     //spanning tree
@@ -2566,7 +2565,7 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
 
     //l3 mode, create l3 intf (default is l3 mode)
     //initilize l3 intf in hardware
-    if (intf->port_type = TYPE_ROUTED_PORT) {
+    if (intf->port_type == TYPE_ROUTED_PORT) {
         //disable ARL for routed ports
         bcm_port_control_set(unit, intf->hw_port, bcmPortControlL2Learn, BCM_PORT_LEARN_FWD);
         bcm_port_control_set(unit, intf->hw_port, bcmPortControlL2Move, BCM_PORT_LEARN_FWD);
@@ -2574,9 +2573,10 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
         switchdev_l3_port_init(unit, intf->hw_port, &intf->l3_intf);
 
         //Put port into VLAN 4095 -untagged (routed port)
-        bcm_vlan_port_add(unit, (*switch)->route_vlan, intf->hw_port, intf->hw_port);
+        BCM_PBMP_PORT_SET(pbmp, intf->hw_port);
+        bcm_vlan_port_add(unit, (*sw)->route_vlan, pbmp, pbmp);
 
-        bcm_port_untagged_vlan_set(unit, intf->hw_port, (*switch)->route_vlan);
+        bcm_port_untagged_vlan_set(unit, intf->hw_port, (*sw)->route_vlan);
     }
 
     //printf("local if ifindex %d %s port %d l3_intf %d \n", 
@@ -2601,7 +2601,8 @@ int async_obj_intf_delete_cb(struct async_object_s *obj)
 
 int async_obj_neigh_create_cb(struct async_object_s *obj)
 {
-    async_obj_neigh_t *neigh = (async_obj_neigh_t *)obj;
+    async_obj_neigh_t *neigh     = (async_obj_neigh_t *)obj;
+    async_obj_intf_t **intf      = NULL;
     bcm_l3_egress_t    egress_object;
     int                object_id = -1;
     int                rc        = 0;
@@ -2612,18 +2613,16 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
         return -1;
     }
 
-    if (!neigh->local_if) {
+    intf = async_obj_intf_find(neigh->ifindex); 
+    if (!intf || !(*intf)) {
         printf("async_obj_neigh_create_cb local_if NULL\n");
         return -1;
     }
     
-    //TODO if object_id exist, do not need to program ASIC
-
-
     bcm_l3_egress_t_init(&egress_object);
-    egress_object.intf = neigh->local_if->l3_intf;
-    egress_object.port = neigh->local_if->hw_port;
-    egress_object.vlan = neigh->local_if->vlan;      //should always be 4095
+    egress_object.intf = (*intf)->l3_intf;
+    egress_object.port = (*intf)->hw_port;
+    egress_object.vlan = (*intf)->vlan;      //should always be 4095
     memcpy(egress_object.mac_addr, neigh->mac_addr, ETHER_ADDR_LEN);
 
     // create l3 egress

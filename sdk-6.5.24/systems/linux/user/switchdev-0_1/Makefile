@@ -479,9 +479,11 @@ $(DEST_DIR)/libopennsa.a: $(BCM) $(DEST_DIR)
 $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
 
-$(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
+SWITCHDEV_OBJ = $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/switchdev_broadcom.o
+
+$(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
-	$(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
+	$(SWITCHDEV_OBJ) $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
 	-lopennsa $(shell pkg-config --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) -o $@
 
 $(BCM): $(BCM).dbg
@@ -493,7 +495,7 @@ ifeq ($(C_CPP_CODE_MIX), TRUE)
 LINKER := $(CXX)
 endif
 
-$(BCM).dbg: user_libs $(PLI) $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o  $(BLDDIR)/version.o \
+$(BCM).dbg: user_libs $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o \
 	${PLATFORM_DEFINES_OBJ}
 	@rm -f $@	# Prevent core dump if currently running
 ifeq (1,$(LINK_STATIC))
@@ -501,7 +503,7 @@ ifeq (1,$(LINK_STATIC))
 else
 	@echo Linking $@ dynamically # This is needed for error parsing
 endif
-	$(LINKER) $(CFLAGS) -o $@ $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/version.o \
+	$(LINKER) $(CFLAGS) -o $@ $(SWITCHDEV_OBJ) $(BLDDIR)/version.o \
 	$(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) \
 	-Wl,--start-group ${PLATFORM_DEFINES_OBJ} $(BCM_LIBS_BLD)  -Wl,--end-group $(LDFLAGS)
 
@@ -536,7 +538,7 @@ $(foreach targ,$(LOCAL_TARGETS),$(eval $(call LOCAL_TARGET_DEF,$(targ))))
 endif
 
 # Build Version
-$(BLDDIR)/version.c: $(BLDDIR)/switchdev_init.o user_libs
+$(BLDDIR)/version.c: $(SWITCHDEV_OBJ) user_libs
 	$(PERL) $(SDK)/tools/version.pl > $@
 $(BLDDIR)/version.o: $(BLDDIR)/version.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -569,10 +571,7 @@ endif
 		override-target=linux-$(platform) $@
 	$(RM) $(BLDDIR)/version.c $(BLDDIR)/version.o
 	$(RM) $(BLDDIR)/platform_defines.c $(BLDDIR)/platform_defines.o
-	$(RM) $(BLDDIR)/switchdev_init.o
-	$(RM) $(BLDDIR)/switchdev_netlink.o
-	$(RM) $(BLDDIR)/switchdev_async_obj.o
-	$(RM) $(BLDDIR)/switchdev_dstty.o
+	$(RM) $(SWITCHDEV_OBJ)
 	$(RM) $(KERNEL_BDE) $(USER_BDE) $(BCM) $(BCM).dbg
 	$(RM) $(BCM_KNET)
 ifdef BUILD_SDKLT

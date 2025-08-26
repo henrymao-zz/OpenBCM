@@ -2,6 +2,9 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/queue.h>
 
 #include <net/if.h>
@@ -360,8 +363,9 @@ async_obj_switch_t** async_obj_switch_find(int unit)
     {
         obj = (async_obj_switch_t *)entry->obj;
         if (obj) {
-            if (unit == obj->unit) == 0)
+            if (unit == obj->unit) {
                 return (async_obj_switch_t**)&(entry->obj);
+            }
         }
     }
 
@@ -475,7 +479,6 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *entry = NULL;
     async_obj_intf_t   *obj   = NULL;
-    async_obj_intf_t  **objp   = NULL;
 
     if (!ifname)
         return NULL;
@@ -483,14 +486,20 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
     if (!(sys = system_get_instance()))
         return NULL;
 
-    if (!(obj = (async_obj_intf_t*)malloc(sizeof(async_obj_intf_t))))
+    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
-        free(entry);
-        printf("intf object malloc failed ifindex %d ifname %s \n",  ifindex, ifname);
+        printf("intf entry malloc failed %s \n",  ifname);
         return NULL;
     }
 
-    printf("async_obj_intf_new new obj for ifindex %d ifname %s\n", ifindex, ifname);
+    if (!(obj = (async_obj_intf_t*)malloc(sizeof(async_obj_intf_t))))
+    {
+        free(entry);
+        printf("intf object malloc failed ifname %s \n", ifname);
+        return NULL;
+    }
+
+    printf("async_obj_intf_new new obj for ifname %s\n", ifname);
 
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;
@@ -503,7 +512,6 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
-    obj->ifindex = ifindex;
     obj->l3_intf = -1;
 
 
@@ -543,7 +551,7 @@ async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
 async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 {
     switch_service_t   *sys   = NULL;
-    async_obj_entry_t  *neigh = NULL;
+    async_obj_entry_t  *entry = NULL;
     async_obj_neigh_t  *obj   = NULL;
     async_obj_neigh_t **objp  = NULL;
 
@@ -553,7 +561,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
     if ((objp = async_obj_neigh_find(nh)))
         return objp;
 
-    if (!(neigh = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
+    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
         printf("neigh entry malloc failed nh 0x%x \n",  nh->ip[0]);
         return NULL;
@@ -561,15 +569,15 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 
     if (!(obj = (async_obj_neigh_t*)malloc(sizeof(async_obj_neigh_t))))
     {
-        free(neigh);
+        free(entry);
         printf("neigh object malloc failed nh 0x%x \n",  nh->ip[0]);
         return NULL;
     }
 
     //printf("async_obj_neigh_find_or_new new obj for 0x%x\n", nh->ip[0]);
 
-    memset(neigh, 0, sizeof(async_obj_entry_t));
-    neigh->obj = (async_object_t *)obj;
+    memset(entry, 0, sizeof(async_obj_entry_t));
+    entry->obj = (async_object_t *)obj;
 
     memset(obj, 0, sizeof(async_obj_neigh_t));
     //initialize object base
@@ -592,9 +600,9 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
     obj->object_id  = -1;
     memcpy(&obj->nh, nh, sizeof(ip_address_t));
 
-    LIST_INSERT_HEAD(&sys->switch_db.object_db, neigh, system_next);
+    LIST_INSERT_HEAD(&sys->switch_db.object_db, entry, system_next);
 
-    return (async_obj_neigh_t**)&(neigh->obj);
+    return (async_obj_neigh_t**)&(entry->obj);
 }
 
 

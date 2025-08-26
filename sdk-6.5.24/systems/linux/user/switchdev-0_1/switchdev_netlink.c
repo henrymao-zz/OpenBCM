@@ -121,6 +121,7 @@ put_cb:
 
 static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
 {
+# if 0
     char *ifname;
     int   port, if_flag;
     int   vlan, vlan_flags;
@@ -159,6 +160,8 @@ static int handle_switchdev_port_vlan_add(struct nlattr *tb[])
     err = bcm_vlan_port_add(0, vlan, pbmp, ubmp);
 
     return err;
+#endif
+    return 0;
 }
 
 static int handle_switchdev_port_obj_add(struct nlattr *tb[])
@@ -186,6 +189,7 @@ static int handle_switchdev_port_obj_add(struct nlattr *tb[])
 
 static int handle_switchdev_port_vlan_del(struct nlattr *tb[])
 {
+#if 0
 	char *ifname;
 	int   port, if_flag;
 	int   vlan, vlan_flags;
@@ -212,6 +216,8 @@ static int handle_switchdev_port_vlan_del(struct nlattr *tb[])
     err = bcm_vlan_port_remove(0, vlan, pbmp);
 
 	return err;
+#endif
+   return 0;
 }
 
 static int handle_switchdev_port_obj_del(struct nlattr *tb[])
@@ -269,10 +275,9 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 	return err;
 }
 
-extern bcm_if_t punt_l3_interface;
-
 void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
 {
+#if 0
     struct nl_addr    *nl_addr;
     uint32_t           ifindex;
     struct rtnl_addr  *addr;
@@ -320,10 +325,13 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
         memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
         bcm_l3_host_add(0, &host_info);
     }
+#endif
+    return;
 }
 
 void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
 {
+#if 0
     struct nl_addr    *nl_addr;
     uint32_t           ifindex;
     struct rtnl_addr  *addr;
@@ -370,6 +378,8 @@ void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
         memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
         bcm_l3_host_delete(0, &host_info);
     }
+#endif
+    return;
 }
 
 #ifndef NDA_RTA
@@ -390,6 +400,7 @@ void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
 
 void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
 {
+#if 0
     struct rtnl_link  *link = (struct rtnl_link *)obj;
     uint32_t           ifindex = 0;
     char              *ifname;
@@ -419,6 +430,7 @@ void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
     }
 
     return;
+#endif
 }
 
 static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
@@ -432,7 +444,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     ip_address_t   ip_addr;
     int            rc = 0;
     char           ifname[IF_NAMESIZE+1];
-    local_interface_t *local_if = NULL;
+    async_obj_intf_t **intf     = NULL;
     switch_service_t  *sys      = NULL;
 
     if ((sys = system_get_instance()) == NULL)
@@ -472,8 +484,8 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 
     if_indextoname(ndm->ndm_ifindex, ifname);
 
-    local_if = local_if_find_by_ifindex(ndm->ndm_ifindex);
-    if (!local_if) {
+    intf = async_obj_intf_find(ndm->ndm_ifindex);
+    if (!intf || !(*intf)) {
         return 0;
     }
     //printf("handle neigh msg %d if_index %d %s\n", msgtype, ndm->ndm_ifindex, ifname);
@@ -497,7 +509,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
             return 0;
         }
         memcpy((*neigh)->mac_addr, mac_addr, ETHER_ADDR_LEN);
-        (*neigh)->local_if = local_if;
+        (*neigh)->ifindex = ndm->ndm_ifindex;
 
         //TODO, handle neigh MAC change case
         (*neigh)->object_create((async_object_t *)(*neigh));
@@ -602,7 +614,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     ip_address_t       ip_dst, ip_gw;
     uint32_t           ifindex = 0;
     char               ifname[IF_NAMESIZE+1];
-    local_interface_t *local_if = NULL;
+    async_obj_intf_t **intf  = NULL;
     switch_service_t  *sys   = NULL;
 
     if ((sys = system_get_instance()) == NULL)
@@ -639,9 +651,9 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 	}
 
     if_indextoname(ifindex, ifname);
-    local_if = local_if_find_by_ifindex(ifindex);
+    intf = async_obj_intf_find(ifindex);
 
-    if (!local_if) {
+    if (!intf || !(*intf)) {
         printf("handle_route_request for port %d %s\n",ifindex, ifname);
         return 0;
     }
