@@ -31,118 +31,11 @@
 #include <linux/netdevice.h>
 #include <linux/if_bridge.h>
 
-#ifndef NO_SAL_APPL
-#include <sal/appl/sal.h>
-#include <sal/appl/config.h>
-#include <appl/diag/bslmgmt.h>
-#include <appl/diag/opennsa_diag.h>
-#endif
-
-#include <bcm/init.h>
-#include <bcm/error.h>
-#include <soc/cmext.h>
-#include <soc/opensoc.h>
-#include <sal/core/boot.h>
-#include <linux-bde.h>
-
-#ifdef BCM_WARM_BOOT_SUPPORT
-#include <bcm/switch.h>
-#endif
-
-/*
- * These includes are needed for do_per_switch_setup() part of the demo.
- */
-#include <bcm/port.h>
-#include <bcm/stg.h>
-
-#if defined(BCM_LTSW_SUPPORT)
-#include <appl/diag/sysconf_ltsw.h>
-#endif
-
-#include <opennsa/link.h>
-#include <opennsa/l3.h>
-
 #include "switchdev_netlink.h"
 #include "switchdev_async_obj.h"
 
 #define prerr(...) fprintf(stderr, "error: " __VA_ARGS__)
 
-
-
-/*
- * local port management
- */
-
-local_interface_t* local_if_find_by_ifindex(int ifindex)
-{
-    switch_service_t*  sys = NULL;
-    local_interface_t* local_if = NULL;
-
-    if ((sys = system_get_instance()) == NULL)
-        return NULL;
-
-    LIST_FOREACH(local_if, &(sys->lif_list), system_next)
-    {
-        if (local_if->ifindex == ifindex)
-            return local_if;
-    }
-
-    return NULL;
-}
-
-
-local_interface_t* local_if_create(char* ifname, int hw_port)
-{
-    switch_service_t   *sys = NULL;
-    local_interface_t  *local_if = NULL;
-    int                 ifindex; 
-
-    if (!ifname)
-        return NULL;
-
-    if (!(sys = system_get_instance()))
-        return NULL;
-   
-    ifindex = if_nametoindex(ifname);
-   
-    if (ifindex > 0) {
-        if ((local_if = local_if_find_by_ifindex(ifindex)))
-            return local_if;
-    }
-
-    if (!(local_if = (local_interface_t*)malloc(sizeof(local_interface_t))))
-    {
-        printf("Port ifindex = %d %s, malloc failed", ifindex, ifname);
-        return NULL;
-    }
-
-    memset(local_if, 0, sizeof(local_interface_t));
-    local_if->ifindex = ifindex;
-    local_if->hw_port = hw_port;
-    local_if->l3_intf = -1;
-    local_if->vlan    = 4095;
-
-    if (ifname)
-        snprintf(local_if->name, IF_NAMESIZE, "%s", ifname);
-
-    //
-
-    LIST_INSERT_HEAD(&(sys->lif_list), local_if, system_next);
-
-    return local_if;
-}
-
-void local_if_finalize(local_interface_t* lif)
-{
-    if (lif == NULL)
-        return;
-
-    //local_if_del_all_vlan(lif);
-
-    free(lif);
-
-    return;
-}
 
 #if 0
 /*

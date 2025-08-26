@@ -26,6 +26,9 @@ enum object_state_e {
 };
 
 enum async_obj_type_e {
+    ASYNC_OBJ_TYPE_SWITCH,            //root object of a switch
+    ASYNC_OBJ_TYPE_VLAN,
+    ASYNC_OBJ_TYPE_INTF,
     ASYNC_OBJ_TYPE_NEIGH,
     ASYNC_OBJ_TYPE_FIB,
 
@@ -42,7 +45,6 @@ typedef int (*object_add_parent_func)(struct async_object_s *, struct async_obje
 typedef int (*object_create_cb_func)(struct async_object_s *);
 typedef int (*object_update_cb_func)(struct async_object_s *);
 typedef int (*object_delete_cb_func)(struct async_object_s *);
-
 
 
 typedef struct async_object_s {
@@ -72,31 +74,120 @@ typedef struct async_obj_entry_s {
 }async_obj_entry_t;
 
 
-/*
- * intf obj
- */
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_SWITCH                                                              */
+/******************************************************************************************/
+typedef struct async_obj_switch_s {
+    //base object, must be same as async_object_t
+    int              state;
+    int              type;    
+	pthread_mutex_t  lock;
 
-typedef struct local_interface_s {
+	LIST_HEAD(obj_switch_parent_list_t, async_obj_entry_s)   parent_list;
+	LIST_HEAD(obj_switch_child_list_t, async_obj_entry_s)    child_list;
+
+    object_create_func     object_create;
+    object_delete_func     object_delete;
+	object_download_func   object_download;
+	object_add_parent_func object_add_parent;
+
+	object_create_cb_func  object_create_cb;
+	object_update_cb_func  object_update_cb;
+	object_delete_cb_func  object_delete_cb;
+
+    //switch specfic
+    int                    unit;
+    int                    route_vlan;
+
+} async_obj_switch_t;
+
+async_obj_switch_t** async_obj_switch_find_or_new(int unit);
+async_obj_switch_t** async_obj_switch_find(int unit);
+
+
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_VLAN                                                                */
+/******************************************************************************************/
+typedef struct async_obj_vlan_s {
+    //base object, must be same as async_object_t
+    int              state;
+    int              type;    
+	pthread_mutex_t  lock;
+
+	LIST_HEAD(obj_vlan_parent_list_t, async_obj_entry_s)   parent_list;
+	LIST_HEAD(obj_vlan_child_list_t, async_obj_entry_s)    child_list;
+
+    object_create_func     object_create;
+    object_delete_func     object_delete;
+	object_download_func   object_download;
+	object_add_parent_func object_add_parent;
+
+	object_create_cb_func  object_create_cb;
+	object_update_cb_func  object_update_cb;
+	object_delete_cb_func  object_delete_cb;
+
+    //vlan specfic
+    int                    vid;
+    int                    if_class;
+    int                    block_broadcast;
+
+} async_obj_vlan_t;
+
+async_obj_vlan_t** async_obj_vlan_find_or_new(int vid);
+async_obj_vlan_t** async_obj_vlan_find(int vid);
+
+
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_INTF                                                                */
+/******************************************************************************************/
+enum port_type_e {
+    TYPE_ROUTED_PORT,
+    TYPE_SWITCH_PORT,
+};
+typedef struct async_obj_intf_s {
+    //base object, must be same as async_object_t
+    int              state;
+    int              type;    
+	pthread_mutex_t  lock;
+
+	LIST_HEAD(obj_vlan_parent_list_t, async_obj_entry_s)   parent_list;
+	LIST_HEAD(obj_vlan_child_list_t, async_obj_entry_s)    child_list;
+
+    object_create_func     object_create;
+    object_delete_func     object_delete;
+	object_download_func   object_download;
+	object_add_parent_func object_add_parent;
+
+	object_create_cb_func  object_create_cb;
+	object_update_cb_func  object_update_cb;
+	object_delete_cb_func  object_delete_cb;
+
     int  ifindex;                 // linux ifindex
     char name[IF_NAMESIZE+1]; 
 
     /* hardware information */
     int hw_port;                  // hardware port id
+    int port_type;                // routed port vs switchport
     int l3_intf;
     int vlan;                     // should always be 4095 for routed port
 
-    LIST_ENTRY(local_interface_s) system_next;
-}local_interface_t;
+    int autoneg;
+    int pause_tx;
+    int pause_rx;
+
+}async_obj_intf_t;
+
+async_obj_intf_t** async_obj_intf_new(char* ifname);
+async_obj_intf_t** async_obj_intf_find(int ifindex);
 
 void local_if_finalize(local_interface_t* lif);
-local_interface_t* local_if_create(char* ifname, int hw_port);
 local_interface_t* local_if_find_by_ifindex(int ifindex);
 
 
 
-/*
- * neigh async object
- */
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_NEIGH                                                               */
+/******************************************************************************************/
 
 #define ETHER_ADDR_LEN 6
 
@@ -130,6 +221,9 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh);
 async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh);
 
 
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_FIB                                                                 */
+/******************************************************************************************/
 typedef struct async_obj_fib_s {
     //base object, must be same as async_object_t
     int              state;
@@ -160,6 +254,20 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t
 
 //////////////////////////////////////////////////////////
 
+typedef struct switch_object_db_s {
+     //list of switch objects
+    LIST_HEAD(switch_list_t, async_obj_entry_s)   switch_list;
+
+    // list of vlan objects
+    LIST_HEAD(vlan_list_t, async_obj_entry_s)     vlan_list;
+
+    //list of interfaces objects
+    LIST_HEAD(lif_list_t, async_obj_entry_s)      lif_list;
+
+    //object store - in memory storage of async objects 
+    // TODO need to be more efficient
+    LIST_HEAD(async_obj_db_t, async_obj_entry_s)  object_db;
+}switch_object_db_t;
 
 typedef struct switch_service_s {
     //struct  nl_sock *generic_sock;
@@ -175,12 +283,9 @@ typedef struct switch_service_s {
     int     epoll_fd;   
     //int     generic_sock_fd;
 
-    //list of interfaces managed by switchdev module
-    LIST_HEAD(lif_list_t, local_interface_s)      lif_list;
 
     //object store - in memory storage of async objects 
-    // TODO need to be more efficient
-    LIST_HEAD(async_obj_db_t, async_obj_entry_s)  object_db;
+    switch_object_db_t                            switch_db;
 
     //object work queue for object download
     LIST_HEAD(obj_list_t, async_obj_entry_s)      object_list;

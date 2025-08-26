@@ -14,38 +14,9 @@
 #include <linux/if_bridge.h>
 #include <pthread.h>
 
-#ifndef NO_SAL_APPL
-#include <sal/appl/sal.h>
-#include <sal/appl/config.h>
-#include <appl/diag/bslmgmt.h>
-#include <appl/diag/opennsa_diag.h>
-#endif
-
-#include <bcm/init.h>
-#include <bcm/error.h>
-#include <soc/cmext.h>
-#include <soc/opensoc.h>
-#include <sal/core/boot.h>
-#include <linux-bde.h>
-
-#ifdef BCM_WARM_BOOT_SUPPORT
-#include <bcm/switch.h>
-#endif
-
-/*
- * These includes are needed for do_per_switch_setup() part of the demo.
- */
-#include <bcm/port.h>
-#include <bcm/stg.h>
-
-#if defined(BCM_LTSW_SUPPORT)
-#include <appl/diag/sysconf_ltsw.h>
-#endif
-
-#include <opennsa/link.h>
-#include <opennsa/l3.h>
 
 #include "switchdev_async_obj.h"
+#include "switchdev_broadcom.h"
 
 
 
@@ -121,7 +92,7 @@ async_object_t** async_object_find(async_object_t *obj)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    LIST_FOREACH(entry, &(sys->object_db), system_next) {
+    LIST_FOREACH(entry, &(sys->switch_db.object_db), system_next) {
        if(entry->obj == obj) {
            return &(entry->obj);
        }
@@ -317,12 +288,237 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
     return 0;
 }
 
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_SWITCH                                                              */
+/******************************************************************************************/
+async_obj_switch_t** async_obj_switch_find_or_new(int unit)
+{
+    switch_service_t    *sys   = NULL;
+    async_obj_entry_t   *entry = NULL;
+    async_obj_switch_t  *obj   = NULL;
+    async_obj_switch_t **objp  = NULL;
+
+    if (!(sys = system_get_instance()))
+        return NULL;
+   
+    if ((objp = async_obj_switch_find(unit)))
+        return objp;
+
+    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
+    {
+        printf("switch obj malloc failed unit 0x%x \n",  unit);
+        return NULL;
+    }
+
+    if (!(obj = (async_obj_switch_t*)malloc(sizeof(async_obj_switch_t))))
+    {
+        free(entry);
+        printf("switch object malloc failed unit %d \n",  unit);
+        return NULL;
+    }
+
+    printf("async_obj_switch_find_or_new new obj for unit %d\n", unit);
+
+    memset(entry, 0, sizeof(async_obj_entry_t));
+    entry->obj = (async_object_t *)obj;
+
+    memset(obj, 0, sizeof(async_obj_switch_t));
+    //initialize object base
+    obj->state      = ASYNC_OBJ_STATE_NEW;
+    obj->type       = ASYNC_OBJ_TYPE_SWITCH;
+    pthread_mutex_init(&obj->lock, NULL);
+    LIST_INIT(&(obj->parent_list));
+    LIST_INIT(&(obj->child_list));
+
+    obj->object_create     = async_object_create;    
+    obj->object_delete     = async_object_delete;
+    obj->object_download   = async_object_download;
+    obj->object_add_parent = async_object_add_parent;
+
+    obj->object_create_cb  = async_obj_switch_create_cb;
+    obj->object_update_cb  = async_obj_switch_update_cb;
+    obj->object_delete_cb  = async_obj_switch_delete_cb;
+
+    //initialize object specific
+    obj->unit = unit;
+
+    LIST_INSERT_HEAD(&sys->switch_db.switch_list, entry, system_next);
+
+    return (async_obj_switch_t**)&(entry->obj);
+}
+
+async_obj_switch_t** async_obj_switch_find(int unit)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_switch_t *obj   = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(entry, &sys->switch_db.switch_list, system_next)
+    {
+        obj = (async_obj_switch_t *)entry->obj;
+        if (obj) {
+            if (unit == obj->unit) == 0)
+                return (async_obj_switch_t**)&(entry->obj);
+        }
+    }
+
+    return NULL;
+}
+
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_VLAN                                                                */
+/******************************************************************************************/
+async_obj_vlan_t** async_obj_vlan_find_or_new(int vid)
+{
+    switch_service_t    *sys   = NULL;
+    async_obj_entry_t   *entry = NULL;
+    async_obj_vlan_t    *obj   = NULL;
+    async_obj_vlan_t   **objp  = NULL;
+
+    if (!(sys = system_get_instance()))
+        return NULL;
+   
+    if ((objp = async_obj_vlan_find(vid)))
+        return objp;
+
+    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
+    {
+        printf("vlan obj malloc failed vlan 0x%x \n",  vid);
+        return NULL;
+    }
+
+    if (!(obj = (async_obj_vlan_t*)malloc(sizeof(async_obj_vlan_t))))
+    {
+        free(entry);
+        printf("vlan object malloc failed vlan %d \n",  vid);
+        return NULL;
+    }
+
+    printf("async_obj_vlan_find_or_new new obj for vlan %d\n", vid);
+
+    memset(entry, 0, sizeof(async_obj_entry_t));
+    entry->obj = (async_object_t *)obj;
+
+    memset(obj, 0, sizeof(async_obj_vlan_t));
+    //initialize object base
+    obj->state      = ASYNC_OBJ_STATE_NEW;
+    obj->type       = ASYNC_OBJ_TYPE_VLAN;
+    pthread_mutex_init(&obj->lock, NULL);
+    LIST_INIT(&(obj->parent_list));
+    LIST_INIT(&(obj->child_list));
+
+    obj->object_create     = async_object_create;    
+    obj->object_delete     = async_object_delete;
+    obj->object_download   = async_object_download;
+    obj->object_add_parent = async_object_add_parent;
+
+    obj->object_create_cb  = async_obj_vlan_create_cb;
+    obj->object_update_cb  = async_obj_vlan_update_cb;
+    obj->object_delete_cb  = async_obj_vlan_delete_cb;
+
+    //initialize object specific
+    obj->vid = vid;
+
+    LIST_INSERT_HEAD(&sys->switch_db.vlan_list, entry, system_next);
+
+    return (async_obj_vlan_t**)&(entry->obj);
+}
+
+async_obj_vlan_t** async_obj_vlan_find(int vid)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_vlan_t   *obj   = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(entry, &(sys->switch_db.vlan_list), system_next)
+    {
+        obj = (async_obj_vlan_t *)entry->obj;
+        if (obj && obj->vid == vid)
+            return (async_obj_vlan_t **)&(entry->obj);
+    }
+
+    return NULL;
+
+}
+
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_INTF                                                                */
+/******************************************************************************************/
+async_obj_intf_t** async_obj_intf_find(int ifindex)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_intf_t   *obj   = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(entry, &(sys->switch_db.lif_list), system_next)
+    {
+        obj = (async_obj_intf_t *)entry->obj;
+        if (obj && obj->ifindex == ifindex)
+            return (async_obj_intf_t **)&(entry->obj);
+    }
+
+    return NULL;
+}
 
 
-/*
- * neigh async object
- */
+async_obj_intf_t** async_obj_intf_new(char* ifname)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_intf_t   *obj   = NULL;
+    async_obj_intf_t  **objp   = NULL;
 
+    if (!ifname)
+        return NULL;
+
+    if (!(sys = system_get_instance()))
+        return NULL;
+
+    if (!(obj = (async_obj_intf_t*)malloc(sizeof(async_obj_intf_t))))
+    {
+        free(entry);
+        printf("intf object malloc failed ifindex %d ifname %s \n",  ifindex, ifname);
+        return NULL;
+    }
+
+    printf("async_obj_intf_new new obj for ifindex %d ifname %s\n", ifindex, ifname);
+
+    memset(entry, 0, sizeof(async_obj_entry_t));
+    entry->obj = (async_object_t *)obj;
+
+    memset(obj, 0, sizeof(async_obj_intf_t));
+    //initialize object base
+    obj->state      = ASYNC_OBJ_STATE_NEW;
+    obj->type       = ASYNC_OBJ_TYPE_INTF;
+    pthread_mutex_init(&obj->lock, NULL);
+    LIST_INIT(&(obj->parent_list));
+    LIST_INIT(&(obj->child_list));
+
+    obj->ifindex = ifindex;
+    obj->l3_intf = -1;
+
+
+    snprintf(obj->name, IF_NAMESIZE, "%s", ifname);
+
+    LIST_INSERT_HEAD(&(sys->switch_db.lif_list), entry, system_next);
+
+    return (async_obj_intf_t**)&(entry->obj);
+}
+
+
+
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_NEIGH                                                               */
+/******************************************************************************************/
 async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
 {
     switch_service_t  *sys   = NULL;
@@ -332,7 +528,7 @@ async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    LIST_FOREACH(entry, &sys->object_db, system_next)
+    LIST_FOREACH(entry, &sys->switch_db.object_db, system_next)
     {
         obj = (async_obj_neigh_t *)entry->obj;
         if (obj) {
@@ -343,69 +539,6 @@ async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
 
     return NULL;
 }
-
-
-int async_obj_neigh_create_cb(struct async_object_s *obj)
-{
-    async_obj_neigh_t *neigh = (async_obj_neigh_t *)obj;
-    bcm_l3_egress_t    egress_object;
-    int                object_id = -1;
-    int                rc        = 0;
-
-    //printf("async_obj_neigh_create_cb enter\n");
-
-    if (!neigh) {
-        return -1;
-    }
-
-    if (!neigh->local_if) {
-        printf("async_obj_neigh_create_cb local_if NULL\n");
-        return -1;
-    }
-    
-    //TODO if object_id exist, do not need to program ASIC
-
-
-    bcm_l3_egress_t_init(&egress_object);
-    egress_object.intf = neigh->local_if->l3_intf;
-    egress_object.port = neigh->local_if->hw_port;
-    egress_object.vlan = neigh->local_if->vlan;      //should always be 4095
-    memcpy(egress_object.mac_addr, neigh->mac_addr, ETHER_ADDR_LEN);
-
-    // create l3 egress
-    rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);    
-    if (BCM_FAILURE(rc)) {
-        printf("async_obj_neigh_create_cb l3_egress create failed %d\n", rc);
-    } 
-    neigh->object_id = object_id;
-
-    return rc;
-}
-
-int async_obj_neigh_update_cb(struct async_object_s *obj)
-{
-    return 0;
-}
-
-int async_obj_neigh_delete_cb(struct async_object_s *obj)
-{
-    async_obj_neigh_t *neigh = (async_obj_neigh_t *)obj;
-    int                rc    = 0;
-
-    if (!neigh) {
-        return -1;
-    }
-    
-    if (neigh->object_id == -1) {
-        return 0;
-    }
-    rc = bcm_l3_egress_destroy(0, neigh->object_id);
-    if (BCM_FAILURE(rc)) {
-        printf("async_obj_neigh_delete_cb l3_egress delete failed %d\n", rc);
-    } 
-    return rc;
-}
-
 
 async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 {
@@ -459,16 +592,16 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
     obj->object_id  = -1;
     memcpy(&obj->nh, nh, sizeof(ip_address_t));
 
-    LIST_INSERT_HEAD(&sys->object_db, neigh, system_next);
+    LIST_INSERT_HEAD(&sys->switch_db.object_db, neigh, system_next);
 
     return (async_obj_neigh_t**)&(neigh->obj);
 }
 
 
 
-/*
- * fib async object
- */
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_FIB                                                                 */
+/******************************************************************************************/
 
 async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
@@ -479,7 +612,7 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    LIST_FOREACH(entry, &(sys->object_db), system_next)
+    LIST_FOREACH(entry, &(sys->switch_db.object_db), system_next)
     {
         if (entry->obj && (entry->obj->type == ASYNC_OBJ_TYPE_FIB)) {
             obj = (async_obj_fib_t *)entry->obj;
@@ -494,100 +627,6 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t
 
     return NULL;
 }
-
-
-static void ipv6_create_mask(uint8 *ip6_mask, uint32 prefix_length) {
-    int i;
-
-    for (i=15; i>=0; i--) {
-        if (i < prefix_length/8) {
-            ip6_mask[i] = 0xFF;
-        } else if (i == prefix_length/8) {
-            ip6_mask[i] = 0xFF - ((1 << (8 -(prefix_length % 8))) - 1);
-        } else {
-            ip6_mask[i] = 0X00;
-        }
-    }
-}
-
-int async_obj_fib_create_cb(struct async_object_s *obj)
-{
-    async_obj_fib_t   *fib = (async_obj_fib_t *)obj;
-    async_obj_entry_t *entry = NULL;
-    async_obj_neigh_t *neigh = NULL;
-    bcm_l3_route_t     route_info;
-    int                rc    = 0;
-
-    if (!fib) {
-        return -1;
-    }
-
-    LIST_FOREACH(entry, &(fib->parent_list), system_next)
-    {
-        if(entry->obj->type == ASYNC_OBJ_TYPE_NEIGH) {
-            neigh = (async_obj_neigh_t *)entry->obj;
-            break;
-        }
-    }
-    if (!neigh) {
-        //should not happen
-        printf("async_obj_fib_create_cb neigh parent not found\n");
-        return -1;
-    }
-
-    //TODO if object_id exist, do not need to program ASIC
-
-    bcm_l3_route_t_init(&route_info);
-
-    if (fib->dst.protocol == AF_INET) {
-        route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
-        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
-    } else {
-        route_info.l3a_flags = BCM_L3_IP6;
-        memcpy(route_info.l3a_ip6_net, fib->dst.ip, 16);
-        ipv6_create_mask(route_info.l3a_ip6_mask, fib->dst_len);
-    } 
-    route_info.l3a_intf = neigh->object_id;
-    rc = bcm_l3_route_add(0, &route_info);
-    if (BCM_FAILURE(rc)) {
-        printf("async_obj_fib_create_cb l3 route create failed: %s\n", bcm_errmsg(rc));
-    }
-
-    return rc;
-}
-
-int async_obj_fib_update_cb(struct async_object_s *obj)
-{
-    return 0;
-}
-
-int async_obj_fib_delete_cb(struct async_object_s *obj)
-{
-    async_obj_fib_t *fib = (async_obj_fib_t *)obj;
-    bcm_l3_route_t   route_info;
-    int              rc = 0;
-
-    if (!fib) {
-        return -1;
-    }
-    
-    if (!LIST_EMPTY(&fib->child_list)) {
-        //should not happen
-        printf("async_obj_fib_delete_cb fib child not empty\n");
-        return -1;
-    }
-
-    bcm_l3_route_t_init(&route_info);
-    route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
-    route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
-    rc = bcm_l3_route_delete(0, &route_info);
-
-    if (BCM_FAILURE(rc)) {
-        printf("async_obj_fib_delete_cb l3_egress delete failed %d\n", rc);
-    } 
-    return rc;
-}
-
 
 async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
 {
@@ -646,7 +685,7 @@ async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_ad
     memcpy(&obj->nh, nh, sizeof(ip_address_t));
     memcpy(&obj->dst, dst, sizeof(ip_address_t));
     
-    LIST_INSERT_HEAD(&sys->object_db, fib, system_next);
+    LIST_INSERT_HEAD(&sys->switch_db.object_db, fib, system_next);
 
     return (async_obj_fib_t**)&(fib->obj);
 }
