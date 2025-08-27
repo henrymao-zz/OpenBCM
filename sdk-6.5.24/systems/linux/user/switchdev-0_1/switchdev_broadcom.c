@@ -2551,7 +2551,7 @@ static int async_obj_intf_create_vlan(struct async_object_s *obj)
     /* L3 Interface */
     bcm_l3_intf_t_init(&l3_intf);
     memcpy(l3_intf.l3a_mac_addr, (*sw)->system_mac,6);
-    l3_intf.l3a_vid = 1;
+    l3_intf.l3a_vid = intf->vlan;
     l3_intf.l3a_vrf = 0;
     //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
     rc = bcm_l3_intf_create(unit, &l3_intf);
@@ -2713,8 +2713,9 @@ int async_obj_l3host_delete_cb(struct async_object_s *obj)
 
 int async_obj_neigh_create_cb(struct async_object_s *obj)
 {
-    async_obj_neigh_t *neigh     = (async_obj_neigh_t *)obj;
-    async_obj_intf_t **intf      = NULL;
+    async_obj_neigh_t    *neigh     = (async_obj_neigh_t *)obj;
+    async_obj_switch_t  **sw        = NULL;
+    async_obj_intf_t    **intf      = NULL;
     bcm_l3_egress_t    egress_object;
     int                rc        = 0;
     int                object_id = -1;
@@ -2722,6 +2723,12 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
     //printf("async_obj_neigh_create_cb enter\n");
 
     if (!neigh) {
+        return -1;
+    }
+
+    sw = async_obj_switch_find_or_new(0);
+    if (!sw || !(*sw)) {
+        print("async_obj_neigh_create_cb NULL sw\n");
         return -1;
     }
 
@@ -2739,11 +2746,23 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
         egress_object.port   = (*intf)->hw_port;
         egress_object.vlan   = (*intf)->vlan;      //should always be 4095
     } else if (neigh->neigh_type == NEIGH_FORUS) {
-        egress_object.intf   = 8191;
         egress_object.module = 0;
-        egress_object.port   = 0;
-        egress_object.vlan   = 0;
-    } 
+        egress_object.port   = neigh->hw_port;        
+        if (neigh->vlan_id == (*sw)->route_vlan) {
+            egress_object.intf   = 8191;
+            egress_object.vlan   = 0;
+        } else {
+            //find intf for "Vlan1"
+            intf = async_obj_intf_find_by_name(neigh->ifname);
+            if (!intf || !(*intf)) {
+                return -1;
+                printf("async_obj_neigh_create_cb forus vlan %d failed to find intf %s", 
+                        neigh->vlan_id, neigh->ifname;
+            }
+            egress_object.intf   = (*intf)->l3_intf;
+            egress_object.vlan   = neigh->vlan_id;
+        }
+    }
 
     memcpy(egress_object.mac_addr, neigh->mac_addr, ETHER_ADDR_LEN);
 

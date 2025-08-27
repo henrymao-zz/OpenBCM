@@ -247,6 +247,9 @@ int main( int argc, char *argv[] )
         goto init_fail;
     }
     (*neigh)->neigh_type = NEIGH_FORUS;
+    (*neigh)->vlan_id    = (*sw)->route_vlan;
+    (*neigh)->hw_port    = 0;
+    (*neigh)->ifindex    = -1;    
     memcpy((*neigh)->mac_addr, system_mac, ETHER_ADDR_LEN);
     (*neigh)->object_add_parent((async_object_t *)(*neigh),(async_object_t *)*vlan);
     (*neigh)->object_create((async_object_t *)(*neigh));
@@ -279,13 +282,22 @@ int main( int argc, char *argv[] )
     ip_default.protocol = AF_INET;
     ip_default.ip[0]    = 0;
 
-    //create new default neigh 
+    //create vlan 1 neigh 
     neigh = NULL;
     neigh = async_obj_neigh_find_or_new(&ip_default);
     if (!neigh || !(*neigh)) {
         // should not happen
         goto init_fail;
     }
+    (*neigh)->neigh_type = NEIGH_FORUS;
+    (*neigh)->vlan_id    = 1;
+    (*neigh)->hw_port    = 0;
+    (*neigh)->ifindex    = -1;
+    sprintf((*neigh)->ifname, "%s", "Vlan1");
+    memcpy((*neigh)->mac_addr, (*sw)->system_mac, ETHER_ADDR_LEN);
+    (*neigh)->object_add_parent((async_object_t *)*neigh, (async_object_t *)*intf);
+    (*neigh)->object_create((async_object_t *)*neigh);
+    (*neigh)->object_download((async_object_t *)*neigh);         
 
     fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
     if (!fib || !(*fib)) {

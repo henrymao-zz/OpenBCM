@@ -474,6 +474,25 @@ async_obj_intf_t** async_obj_intf_find(int ifindex)
     return NULL;
 }
 
+async_obj_intf_t** async_obj_intf_find_by_name(char *ifname)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_intf_t   *obj   = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(entry, &(sys->switch_db.lif_list), system_next)
+    {
+        obj = (async_obj_intf_t *)entry->obj;
+        if (obj && (strncmp(obj->name, ifname, IF_NAMESIZE) == 0))
+            return (async_obj_intf_t **)&(entry->obj);
+    }
+
+    return NULL;
+}
+
 
 async_obj_intf_t** async_obj_intf_new(char* ifname)
 {

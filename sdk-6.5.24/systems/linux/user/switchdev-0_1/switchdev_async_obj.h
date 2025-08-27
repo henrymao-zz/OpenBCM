@@ -195,6 +195,7 @@ typedef struct async_obj_intf_s {
 
 async_obj_intf_t** async_obj_intf_new(char* ifname);
 async_obj_intf_t** async_obj_intf_find(int ifindex);
+async_obj_intf_t** async_obj_intf_find_by_name(char *ifname);
 
 /******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_L3HOST                                                              */
@@ -258,7 +259,10 @@ typedef struct async_obj_neigh_s {
     int                object_id;
     ip_address_t       nh;
     uint8_t            mac_addr[ETHER_ADDR_LEN];
-    int                ifindex;   //linux ifindex
+    int                ifindex;               //linux ifindex
+    int                ifname[IF_NAMESIZE];   //linux ifname
+    int                hw_port;               // asic port
+    int                vlan_id;
 } async_obj_neigh_t;
 
 async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh);
