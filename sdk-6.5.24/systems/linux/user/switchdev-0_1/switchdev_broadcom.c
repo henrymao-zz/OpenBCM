@@ -2295,9 +2295,11 @@ int async_obj_vlan_create_cb(struct async_object_s *obj)
 
     rc = bcm_vlan_create(unit,vlan->vid);
 
-    if(!rc) {
-        printf("async_obj_vlan_create_cb failed to create vlan %d rc %d\n",vlan->vid, rc);
-
+    if(rc) {
+        if (rc != BCM_E_EXISTS) {
+            printf("async_obj_vlan_create_cb failed to create vlan %d rc %d\n",vlan->vid, rc);
+        }
+        return rc;
     }
     
     //Set if_class if not 0(default)
@@ -2420,12 +2422,10 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
     async_obj_switch_t **sw        = NULL;
     async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
 
-
-    //printf("async_obj_intf_create_cb enter\n");
-
     if (!intf) {
         return -1;
     }
+    //printf("async_obj_intf_create_physical ifindex %d ifname %s\n", intf->ifindex, intf->name);
 
     sw = async_obj_switch_find(unit);
     if (!sw || !(*sw)) {
@@ -2454,6 +2454,7 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
 
     //get and save ifindex
     intf->ifindex = if_nametoindex(intf->name);
+    //printf("async_obj_intf_create_physical ifindex %d ifname %s\n", intf->ifindex, intf->name);
 
     //Create filter for KNET interface
     bcm_knet_filter_t_init(&filter);
@@ -2495,6 +2496,7 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
         switchdev_l3_port_init(unit, intf->hw_port, &intf->l3_intf);
 
         //Put port into VLAN 4095 -untagged (routed port)
+        printf("adding port %d to vlan %d\n", intf->hw_port, (*sw)->route_vlan);
         BCM_PBMP_PORT_SET(pbmp, intf->hw_port);
         bcm_vlan_port_add(unit, (*sw)->route_vlan, pbmp, pbmp);
 
@@ -2519,12 +2521,11 @@ static int async_obj_intf_create_vlan(struct async_object_s *obj)
     bcm_l3_intf_t            l3_intf;
     bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
-
-    //printf("async_obj_intf_create_cb enter\n");
-
     if (!intf) {
         return -1;
     }
+
+    printf("async_obj_intf_create_vlan %s\n", intf->name);
 
     sw = async_obj_switch_find(unit);
     if (!sw || !(*sw)) {
@@ -2572,7 +2573,7 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
 {
     async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
 
-    printf("async_obj_intf_create_cb enter\n");
+    //printf("async_obj_intf_create_cb enter\n");
 
     if (!intf) {
         return -1;

@@ -352,7 +352,7 @@ void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
 
     local_if = async_obj_intf_find(ifindex);
     if(!local_if || !(*local_if)) {
-        printf("handle newaddr failed to find local if %d %s\n", ifindex, ifname);
+        printf("handle deladdr failed to find local if %d %s\n", ifindex, ifname);
         return;
     }
 
@@ -423,7 +423,7 @@ void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
 
     local_if = async_obj_intf_find(ifindex);
     if(!local_if||!(*local_if)) {
-        printf("handle deladdr failed to find local if %d %s\n", ifindex, ifname);
+        printf("handle rmt_newlink failed to find local if %d %s\n", ifindex, ifname);
         return;
     }
 

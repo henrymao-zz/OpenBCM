@@ -60,20 +60,23 @@ int switchdev_portconfig_init(int unit)
          * if vlan 4095 does not exist, create a new obj
          */
         vlan = async_obj_vlan_find_or_new(4095);
-        if (!vlan) {
+        if (!vlan || !(*vlan)) {
             printf("Failed to create vlan for routed port %s\n", ifname);
             fclose(fp);
             return -1;
         }            
 
         local_if = async_obj_intf_new(ifname);
-        if(local_if) {
+        if(!local_if || !(*local_if)) {
             printf("Failed to new async_obj_intf for %s\n", ifname);
             continue;
         }
         (*local_if)->if_type   = INTF_TYPE_PHYSICAL;
         (*local_if)->hw_port   = port;
         (*local_if)->port_mode = TYPE_ROUTED_PORT;
+        (*local_if)->autoneg   = true;
+        (*local_if)->pause_tx  = false;
+        (*local_if)->pause_rx  = false;
 
     
         (*local_if)->object_add_parent((async_object_t *)*local_if, (async_object_t *)*vlan);
@@ -98,8 +101,9 @@ static void switchdev_system_init(switch_service_t* sys)
 
     memset(sys, 0, sizeof(switch_service_t));
 
+    LIST_INIT(&(sys->switch_db.switch_list));
+    LIST_INIT(&(sys->switch_db.vlan_list));
     LIST_INIT(&(sys->switch_db.lif_list));
-
     LIST_INIT(&(sys->switch_db.object_db));
 
     LIST_INIT(&(sys->object_list));
@@ -226,7 +230,7 @@ int main( int argc, char *argv[] )
 
     //Create vlan 4095 - internal vlan for routed port
     vlan = async_obj_vlan_find_or_new((*sw)->route_vlan);
-    if (!vlan) {
+    if (!vlan || !(*vlan)) {
         goto init_fail;
     }    
     (*vlan)->if_class        = 1;
@@ -238,19 +242,20 @@ int main( int argc, char *argv[] )
 
     //Create CPU neighbour (FORUS)
     neigh = async_obj_neigh_new();
-    if (!neigh) {
+    if (!neigh || !(*neigh)) {
         // should not happen
         goto init_fail;
     }
     (*neigh)->neigh_type = NEIGH_FORUS;
     memcpy((*neigh)->mac_addr, system_mac, ETHER_ADDR_LEN);
+    (*neigh)->object_add_parent((async_object_t *)(*neigh),(async_object_t *)*vlan);
     (*neigh)->object_create((async_object_t *)(*neigh));
     (*neigh)->object_download((async_object_t *)*neigh);
 
     //Create vlan 1 - default vlan, enable l3
     vlan = NULL;
     vlan = async_obj_vlan_find_or_new(1);
-    if (!vlan) {
+    if (!vlan || !(*vlan)) {
         goto init_fail;
     }      
     (*vlan)->object_add_parent((async_object_t *)*vlan, (async_object_t *)*sw);
@@ -259,7 +264,7 @@ int main( int argc, char *argv[] )
 
     //Create vlan 1 virtual interface 
     intf = async_obj_intf_new("Vlan1");
-    if(intf) {
+    if(!intf || !(*intf)) {
         printf("Failed to new async_obj_intf for Vlan1\n");
         goto init_fail;
     }
@@ -277,13 +282,13 @@ int main( int argc, char *argv[] )
     //create new default neigh 
     neigh = NULL;
     neigh = async_obj_neigh_find_or_new(&ip_default);
-    if (!neigh) {
+    if (!neigh || !(*neigh)) {
         // should not happen
         goto init_fail;
     }
 
     fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
-    if (!fib) {
+    if (!fib || !(*fib)) {
         // should not happen
         goto init_fail;
     }
@@ -296,7 +301,7 @@ int main( int argc, char *argv[] )
 
     //Create ports from port_config.ini
     rc = switchdev_portconfig_init(0);
-    if(!rc) {
+    if(rc) {
         goto init_fail;
     }
 

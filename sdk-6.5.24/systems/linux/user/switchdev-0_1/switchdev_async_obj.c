@@ -40,6 +40,7 @@ int async_object_create(async_object_t *obj)
         return -1;
     }
 
+    //printf("async_object_create type %d state %d\n", obj->type, obj->state);
     pthread_mutex_lock(&obj->lock);
 
     switch(obj->state) {
@@ -499,7 +500,7 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
         return NULL;
     }
 
-    printf("async_obj_intf_new new obj for ifname %s\n", ifname);
+    //printf("async_obj_intf_new new obj for ifname %s\n", ifname);
 
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;
@@ -512,6 +513,16 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
+    obj->object_create     = async_object_create;    
+    obj->object_delete     = async_object_delete;
+    obj->object_download   = async_object_download;
+    obj->object_add_parent = async_object_add_parent;
+
+    obj->object_create_cb  = async_obj_intf_create_cb;
+    obj->object_update_cb  = async_obj_intf_update_cb;
+    obj->object_delete_cb  = async_obj_intf_delete_cb;
+
+    //initialize object specific
     obj->l3_intf = -1;
 
     snprintf(obj->name, IF_NAMESIZE, "%s", ifname);
