@@ -2488,7 +2488,7 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
 
     //l3 mode, create l3 intf (default is l3 mode)
     //initilize l3 intf in hardware
-    if (intf->if_type == TYPE_ROUTED_PORT) {
+    if (intf->port_mode == TYPE_ROUTED_PORT) {
         //disable ARL for routed ports
         bcm_port_control_set(unit, intf->hw_port, bcmPortControlL2Learn, BCM_PORT_LEARN_FWD);
         bcm_port_control_set(unit, intf->hw_port, bcmPortControlL2Move, BCM_PORT_LEARN_FWD);
@@ -2496,7 +2496,6 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
         switchdev_l3_port_init(unit, intf->hw_port, &intf->l3_intf);
 
         //Put port into VLAN 4095 -untagged (routed port)
-        printf("adding port %d to vlan %d\n", intf->hw_port, (*sw)->route_vlan);
         BCM_PBMP_PORT_SET(pbmp, intf->hw_port);
         bcm_vlan_port_add(unit, (*sw)->route_vlan, pbmp, pbmp);
 
@@ -2655,7 +2654,7 @@ int async_obj_l3host_create_cb(struct async_object_s *obj)
 
     rc = bcm_l3_host_add(0, &host_info);
 
-    if(!rc) {
+    if(rc) {
         printf("async_obj_l3host_create_cb bcm_l3_host_add failed, rc = %d\n", rc);
     }
     return rc;

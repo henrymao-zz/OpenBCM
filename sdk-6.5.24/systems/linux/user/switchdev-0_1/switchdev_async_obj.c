@@ -321,7 +321,7 @@ async_obj_switch_t** async_obj_switch_find_or_new(int unit)
         return NULL;
     }
 
-    printf("async_obj_switch_find_or_new new obj for unit %d\n", unit);
+    //printf("async_obj_switch_find_or_new new obj for unit %d\n", unit);
 
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;
@@ -402,7 +402,7 @@ async_obj_vlan_t** async_obj_vlan_find_or_new(int vid)
         return NULL;
     }
 
-    printf("async_obj_vlan_find_or_new new obj for vlan %d\n", vid);
+    //printf("async_obj_vlan_find_or_new new obj for vlan %d\n", vid);
 
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;
@@ -561,9 +561,9 @@ async_obj_l3host_t** async_obj_l3host_find_or_new(ip_address_t *host)
         return NULL;
     }
 
-    printf("async_obj_l3host_find_or_new new obj for 0x%x\n", host->ip[0]);
+    //printf("async_obj_l3host_find_or_new new obj for 0x%x\n", host->ip[0]);
 
-    memset(entry, 0, sizeof(async_obj_l3host_t));
+    memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;
 
     memset(obj, 0, sizeof(async_obj_l3host_t));
@@ -638,7 +638,7 @@ async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
     return NULL;
 }
 
-async_obj_neigh_t** async_obj_neigh_find_type(int type)
+async_obj_neigh_t** async_obj_neigh_find_type(int neigh_type)
 {
     switch_service_t  *sys   = NULL;
     async_obj_entry_t *entry = NULL;
@@ -651,7 +651,7 @@ async_obj_neigh_t** async_obj_neigh_find_type(int type)
     {
         obj = (async_obj_neigh_t *)entry->obj;
         if (obj) {
-            if (obj->type == type)
+            if (obj->neigh_type == neigh_type)
                 return (async_obj_neigh_t**)&(entry->obj);
         }
     }
@@ -740,7 +740,7 @@ async_obj_neigh_t** async_obj_neigh_new(void)
         return NULL;
     }
 
-    printf("async_obj_neigh_new new obj \n");
+    //printf("async_obj_neigh_new new obj \n");
 
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;
