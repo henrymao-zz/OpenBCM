@@ -489,11 +489,6 @@ _sysconf_attach( int unit )
     return 0;
 }
 
-//TODO, need to read from eeprom
-static bcm_mac_t system_mac = {0x20, 0x88, 0x10, 0x58, 0xf9, 0x80};
-
-
-
 static int switchdev_fp_add_l3forus_entry(int unit,
                                           bcm_field_group_t group,
                                           bcm_field_entry_t eid,
@@ -1048,8 +1043,14 @@ static int switchdev_fp_init_ingress(int unit)
     bcm_field_stat_t         stat_arr[9];
     int                      stat_arr_sz;     
     int                      statid = -1;
+    async_obj_switch_t     **sw       = NULL;
     //int prio;
 
+    sw = async_obj_switch_find(unit);
+    if (!sw || !(*sw)) {
+        printf("switchdev_fp_init_ingress switch NULL\n");
+        return -1;
+    }
     /* Enable IFP for CPU port */
     rv = bcm_port_control_set(unit, port, bcmPortControlFilterIngress, 1);
 
@@ -1208,7 +1209,7 @@ static int switchdev_fp_init_ingress(int unit)
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    system_mac, 
+                                    (*sw)->system_mac, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpRequest,
                                     policerId,
@@ -1239,7 +1240,7 @@ static int switchdev_fp_init_ingress(int unit)
     rv = switchdev_fp_add_arp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    system_mac, 
+                                    (*sw)->system_mac, 
                                     mac_mask, 
                                     bcmFieldIpTypeArpReply,
                                     policerId,
@@ -1410,7 +1411,7 @@ static int switchdev_fp_init_ingress(int unit)
     rv = switchdev_fp_add_dhcp_reply_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    system_mac,
+                                    (*sw)->system_mac,
                                     mac_mask, 
                                     policerId,
                                     statid);
@@ -1697,7 +1698,14 @@ static int switchdev_fp_init_lookup(int unit)
     bcm_field_stat_t         stat_arr[9];
     int                      stat_arr_sz;     
     int                      statid = -1;
+    async_obj_switch_t     **sw     = NULL;
     //int prio;
+
+    sw = async_obj_switch_find(unit);
+    if (!sw || !(*sw)) {
+        printf("switchdev_fp_init_lookup switch NULL\n");
+        return -1;
+    }
 
     /* FP group configuration and creation */
     bcm_field_group_config_t_init(&group_config);
@@ -1743,7 +1751,7 @@ static int switchdev_fp_init_lookup(int unit)
     rv = switchdev_fp_add_inject_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    system_mac,
+                                    (*sw)->system_mac,
                                     mac_mask,
                                     statid);
     if (rv != BCM_E_NONE) {
@@ -1770,7 +1778,7 @@ static int switchdev_fp_init_lookup(int unit)
     rv = switchdev_fp_add_inject_lldp_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    system_mac,
+                                    (*sw)->system_mac,
                                     mac_mask, 
                                     statid);
     if (rv != BCM_E_NONE) {
@@ -1794,7 +1802,7 @@ static int switchdev_fp_init_lookup(int unit)
     rv = switchdev_fp_add_lookup_sysmac_entry(unit, 
                                     group_config.group, 
                                     eid, 
-                                    system_mac,
+                                    (*sw)->system_mac,
                                     mac_mask, 
                                     statid);
     if (rv != BCM_E_NONE) {
@@ -2346,7 +2354,7 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
 
     /* L2 station */
     bcm_l2_station_t_init(&l2_station);
-    memcpy(l2_station.dst_mac, system_mac, 6);
+    memcpy(l2_station.dst_mac, (*sw)->system_mac, 6);
     memcpy(l2_station.dst_mac_mask, mac_mask, 6);
     l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
     l2_station.vlan         = (*sw)->route_vlan;
@@ -2361,7 +2369,7 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
 	}
     /* L3 Interface */
     bcm_l3_intf_t_init(&l3_intf);
-    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+    memcpy(l3_intf.l3a_mac_addr, (*sw)->system_mac,6);
     l3_intf.l3a_vid = (*sw)->route_vlan;
     l3_intf.l3a_vrf = 0;
     //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
@@ -2432,7 +2440,7 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
     netif.port = intf->hw_port;
     // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
     netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
-    memcpy(netif.mac_addr, system_mac, sizeof(bcm_mac_t));
+    memcpy(netif.mac_addr, (*sw)->system_mac, sizeof(bcm_mac_t));
     netif.cb_user_data = 0;
 
     sal_strncpy(netif.name, intf->name, sizeof(netif.name) - 1);
@@ -2479,7 +2487,7 @@ static int async_obj_intf_create_physical(struct async_object_s *obj)
 
     //l3 mode, create l3 intf (default is l3 mode)
     //initilize l3 intf in hardware
-    if (intf->port_type == TYPE_ROUTED_PORT) {
+    if (intf->if_type == TYPE_ROUTED_PORT) {
         //disable ARL for routed ports
         bcm_port_control_set(unit, intf->hw_port, bcmPortControlL2Learn, BCM_PORT_LEARN_FWD);
         bcm_port_control_set(unit, intf->hw_port, bcmPortControlL2Move, BCM_PORT_LEARN_FWD);
@@ -2504,7 +2512,6 @@ static int async_obj_intf_create_vlan(struct async_object_s *obj)
 {
     int                  rc        = 0;
     int                  unit      = 0;
-    bcm_pbmp_t           pbmp;
     async_obj_switch_t **sw        = NULL;
     async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
     bcm_l2_station_t         l2_station;
@@ -2527,7 +2534,7 @@ static int async_obj_intf_create_vlan(struct async_object_s *obj)
 
     //create l2 station for the interface
     bcm_l2_station_t_init(&l2_station);
-    memcpy(l2_station.dst_mac, system_mac, 6);
+    memcpy(l2_station.dst_mac, (*sw)->system_mac, 6);
     memcpy(l2_station.dst_mac_mask, mac_mask, 6);
     l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
     l2_station.vlan         = 0;
@@ -2536,24 +2543,24 @@ static int async_obj_intf_create_vlan(struct async_object_s *obj)
     l2_station.src_port_mask = 0;
 
     rc = bcm_l2_station_add(unit, &station_id, &l2_station);
-	if (BCM_E_NONE != rv) {
+	if (BCM_E_NONE != rc) {
 			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rc));
-			return rv;
+			return rc;
 	}
 
     /* L3 Interface */
     bcm_l3_intf_t_init(&l3_intf);
-    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+    memcpy(l3_intf.l3a_mac_addr, (*sw)->system_mac,6);
     l3_intf.l3a_vid = 1;
     l3_intf.l3a_vrf = 0;
     //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
     rc = bcm_l3_intf_create(unit, &l3_intf);
-    if (BCM_FAILURE(rv)) {
+    if (BCM_FAILURE(rc)) {
        printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rc));
-       return rv;
+       return rc;
     }
 
-    intf->l3_intf = l3_intf;
+    intf->l3_intf = l3_intf.l3a_intf_id;
 
     //printf("local if ifindex %d %s port %d l3_intf %d \n", 
     //       local_if->ifindex, local_if->name, local_if->hw_port, local_if->l3_intf);
@@ -2563,22 +2570,15 @@ static int async_obj_intf_create_vlan(struct async_object_s *obj)
 
 int async_obj_intf_create_cb(struct async_object_s *obj)
 {
-    int                  rc        = 0;
-    bcm_knet_netif_t     netif;
-    bcm_knet_filter_t    filter;  
-    int                  unit      = 0;
-    bcm_pbmp_t           pbmp;
-    async_obj_switch_t **sw        = NULL;
     async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
 
-
-    //printf("async_obj_intf_create_cb enter\n");
+    printf("async_obj_intf_create_cb enter\n");
 
     if (!intf) {
         return -1;
     }
 
-    switch(intf->type) {
+    switch(intf->if_type) {
         case INTF_TYPE_PHYSICAL:
             return async_obj_intf_create_physical(obj);
 
@@ -2595,6 +2595,7 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
 int async_obj_intf_update_cb(struct async_object_s *obj)
 {
     async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
+    int                  rc        = 0;
 
     if (!intf) {
         return -1;
@@ -2605,8 +2606,9 @@ int async_obj_intf_update_cb(struct async_object_s *obj)
             intf->admin_state_changed, intf->admin_state);
             
     if(intf->admin_state_changed) {
-        bcm_port_enable_set(0, intf->hw_port, intf->admin_state);
+        rc = bcm_port_enable_set(0, intf->hw_port, intf->admin_state);
     }
+    return rc;
 }
 
 int async_obj_intf_delete_cb(struct async_object_s *obj)
@@ -2714,8 +2716,8 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
     async_obj_neigh_t *neigh     = (async_obj_neigh_t *)obj;
     async_obj_intf_t **intf      = NULL;
     bcm_l3_egress_t    egress_object;
-    int                object_id = -1;
     int                rc        = 0;
+    int                object_id = -1;
 
     //printf("async_obj_neigh_create_cb enter\n");
 
@@ -2725,7 +2727,7 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
 
     bcm_l3_egress_t_init(&egress_object);
 
-    if (neigh->type == NEIGH_DYNAMIC) {}
+    if (neigh->neigh_type == NEIGH_DYNAMIC) {
         //intf information not preset, need to get from interface
         intf = async_obj_intf_find(neigh->ifindex); 
         if (!intf || !(*intf)) {
@@ -2736,7 +2738,7 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
         egress_object.intf   = (*intf)->l3_intf;
         egress_object.port   = (*intf)->hw_port;
         egress_object.vlan   = (*intf)->vlan;      //should always be 4095
-    } else if (neigh->type == NEIGH_FORUS) {
+    } else if (neigh->neigh_type == NEIGH_FORUS) {
         egress_object.intf   = 8191;
         egress_object.module = 0;
         egress_object.port   = 0;

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/queue.h>
@@ -70,7 +71,7 @@ int switchdev_portconfig_init(int unit)
             printf("Failed to new async_obj_intf for %s\n", ifname);
             continue;
         }
-        (*local_if)->type      = INTF_TYPE_PHYSICAL;
+        (*local_if)->if_type   = INTF_TYPE_PHYSICAL;
         (*local_if)->hw_port   = port;
         (*local_if)->port_mode = TYPE_ROUTED_PORT;
 
@@ -200,6 +201,7 @@ int main( int argc, char *argv[] )
     async_obj_fib_t     **fib    = NULL;
     async_obj_neigh_t   **neigh  = NULL;
     ip_address_t          ip_default;
+    uint8_t               system_mac[ETHER_ADDR_LEN] = {0x20, 0x88, 0x10, 0x58, 0xf9, 0x80}; //need to get from eeprom
 
     //parse argv
 
@@ -217,6 +219,7 @@ int main( int argc, char *argv[] )
     }
     (*sw)->unit       = 0;
     (*sw)->route_vlan = 4095;
+    memcpy((*sw)->system_mac, system_mac, ETHER_ADDR_LEN);
     (*sw)->object_create((async_object_t *)*sw);
     (*sw)->object_download((async_object_t *)*sw);
 
@@ -239,7 +242,7 @@ int main( int argc, char *argv[] )
         // should not happen
         goto init_fail;
     }
-    (*neigh)->type = NEIGH_FORUS;
+    (*neigh)->neigh_type = NEIGH_FORUS;
     memcpy((*neigh)->mac_addr, system_mac, ETHER_ADDR_LEN);
     (*neigh)->object_create((async_object_t *)(*neigh));
     (*neigh)->object_download((async_object_t *)*neigh);
@@ -258,9 +261,9 @@ int main( int argc, char *argv[] )
     intf = async_obj_intf_new("Vlan1");
     if(intf) {
         printf("Failed to new async_obj_intf for Vlan1\n");
-        continue;
+        goto init_fail;
     }
-    (*intf)->type      = INTF_TYPE_VLAN;
+    (*intf)->if_type   = INTF_TYPE_VLAN;
     (*intf)->port_mode = TYPE_ROUTED_PORT;
 
     (*intf)->object_add_parent((async_object_t *)*intf, (async_object_t *)*vlan);

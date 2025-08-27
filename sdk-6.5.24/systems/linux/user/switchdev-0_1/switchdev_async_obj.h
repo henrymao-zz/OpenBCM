@@ -14,6 +14,8 @@ typedef struct ip_address_s {
 })
 #endif
 
+#define ETHER_ADDR_LEN 6
+
 // async object base definition
 enum object_state_e {
     ASYNC_OBJ_STATE_NEW,
@@ -29,6 +31,7 @@ enum async_obj_type_e {
     ASYNC_OBJ_TYPE_SWITCH,            //root object of a switch
     ASYNC_OBJ_TYPE_VLAN,
     ASYNC_OBJ_TYPE_INTF,
+    ASYNC_OBJ_TYPE_L3HOST,
     ASYNC_OBJ_TYPE_NEIGH,
     ASYNC_OBJ_TYPE_FIB,
 
@@ -98,6 +101,7 @@ typedef struct async_obj_switch_s {
     //switch specfic
     int                    unit;
     int                    route_vlan;
+    uint8_t                system_mac[ETHER_ADDR_LEN];
 
 } async_obj_switch_t;
 
@@ -173,7 +177,7 @@ typedef struct async_obj_intf_s {
     char name[IF_NAMESIZE+1]; 
 
     /* hardware information */
-    int  type;                     // VLAN, PHYSICAL etc
+    int  if_type;                  // VLAN, PHYSICAL etc
     
     int  admin_state;              // enable = TRUE, disable = FALSE
     bool admin_state_changed;
@@ -226,7 +230,6 @@ async_obj_l3host_t** async_obj_l3host_find(ip_address_t *host);
 /*     ASYNC_OBJ_TYPE_NEIGH                                                               */
 /******************************************************************************************/
 
-#define ETHER_ADDR_LEN 6
 enum neigh_type_e {
      NEIGH_DYNAMIC,
      NEIGH_FORUS,
@@ -251,7 +254,7 @@ typedef struct async_obj_neigh_s {
 	object_delete_cb_func  object_delete_cb;
 
     //neigh specfic	
-    int                type;
+    int                neigh_type;
     int                object_id;
     ip_address_t       nh;
     uint8_t            mac_addr[ETHER_ADDR_LEN];
@@ -259,6 +262,7 @@ typedef struct async_obj_neigh_s {
 } async_obj_neigh_t;
 
 async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh);
+async_obj_neigh_t** async_obj_neigh_new(void);
 async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh);
 async_obj_neigh_t** async_obj_neigh_find_type(int type);
 
@@ -339,5 +343,6 @@ typedef struct switch_service_s {
 switch_service_t* system_get_instance();
 
 int switchdev_async_obj_main(switch_service_t *sys);
+
 
 #endif 

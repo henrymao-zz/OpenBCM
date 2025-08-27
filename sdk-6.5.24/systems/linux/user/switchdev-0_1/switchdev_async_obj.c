@@ -712,25 +712,24 @@ async_obj_neigh_t** async_obj_neigh_new(void)
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *entry = NULL;
     async_obj_neigh_t  *obj   = NULL;
-    async_obj_neigh_t **objp  = NULL;
 
     if (!(sys = system_get_instance()))
         return NULL;
    
     if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
-        printf("neigh entry malloc failed nh 0x%x \n",  nh->ip[0]);
+        printf("neigh entry malloc failed\n");
         return NULL;
     }
 
     if (!(obj = (async_obj_neigh_t*)malloc(sizeof(async_obj_neigh_t))))
     {
         free(entry);
-        printf("neigh object malloc failed nh 0x%x \n",  nh->ip[0]);
+        printf("neigh object malloc failed\n");
         return NULL;
     }
 
-    //printf("async_obj_neigh_find_or_new new obj for 0x%x\n", nh->ip[0]);
+    printf("async_obj_neigh_new new obj \n");
 
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = (async_object_t *)obj;

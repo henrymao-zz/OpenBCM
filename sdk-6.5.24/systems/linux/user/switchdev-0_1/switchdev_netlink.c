@@ -430,11 +430,11 @@ void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
     
     //update 
     if (link_flag & IFF_LOWER_UP) {
-        (*local_if)->admin_state         = TRUE;
-        (*local_if)->admin_state_changed = TRUE;
+        (*local_if)->admin_state         = true;
+        (*local_if)->admin_state_changed = true;
     } else if (!(link_flag & IFF_LOWER_UP)) {
-        (*local_if)->admin_state         = FALSE;
-        (*local_if)->admin_state_changed = TRUE;
+        (*local_if)->admin_state         = false;
+        (*local_if)->admin_state_changed = true;
     }
 
     (*local_if)->object_download((async_object_t *)(*local_if));
