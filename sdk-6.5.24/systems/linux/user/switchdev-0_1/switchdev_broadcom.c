@@ -1874,95 +1874,6 @@ int switchdev_field_processor_init(int unit)
     return rv;
 }
 
-bcm_if_t punt_l3_interface;
-
-int switchdev_vlan_init(int unit)
-{
-    bcm_error_t              rv = BCM_E_NONE;
-    bcm_l3_intf_t            l3_intf;
-    bcm_l3_egress_t          egress_object;    
-    //bcm_if_t                 ingress_if_egr;
-    //bcm_l3_ingress_t         l3_ingress;
-    int                      station_id;
-    bcm_l2_station_t         l2_station;
-    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    bcm_if_t                 host_l3_interface;
-    bcm_l3_route_t           route_info;
-
-    bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
-    bcm_switch_control_set(unit, bcmSwitchL3IngressMode, 1);
-    bcm_switch_control_set(unit, bcmSwitchIpmcSameVlanL3Route, 1);
-    bcm_switch_control_set(unit, bcmSwitchL3IngressInterfaceMapSet, 1);
-    bcm_switch_control_set(unit, bcmSwitchL2DstHitEnable, 0);
-
-
-    //Create L3 for Vlan 1
-    bcm_l2_station_t_init(&l2_station);
-    memcpy(l2_station.dst_mac, system_mac, 6);
-    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
-    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
-    l2_station.vlan         = 0;
-    l2_station.vlan_mask    = 0;
-    l2_station.src_port     = 0;
-    l2_station.src_port_mask = 0;
-
-    rv = bcm_l2_station_add(unit, &station_id, &l2_station);
-	if (BCM_E_NONE != rv) {
-			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
-			return rv;
-	}
-    /* L3 Interface */
-    bcm_l3_intf_t_init(&l3_intf);
-    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
-    l3_intf.l3a_vid = 1;
-    l3_intf.l3a_vrf = 0;
-    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
-    rv = bcm_l3_intf_create(unit, &l3_intf);
-    if (BCM_FAILURE(rv)) {
-       printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
-       return rv;
-    }
-     /* L3 Egress - to host CPU*/
-    bcm_l3_egress_t_init(&egress_object);
-    egress_object.intf = l3_intf.l3a_intf_id;
-    egress_object.module = 0;
-    egress_object.port = 0;
-    egress_object.vlan = 1;
-    memcpy(egress_object.mac_addr, system_mac, sizeof(system_mac));
-
-    rv = bcm_l3_egress_create(unit, 0, &egress_object, &host_l3_interface);
-    if (BCM_FAILURE(rv)) {
-        printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
-        return rv;
-    }    
-
-    /* L3 Egress - to host CPU*/
-    bcm_l3_egress_t_init(&egress_object);
-    //egress_object.intf = l3_intf.l3a_intf_id;
-    egress_object.intf = 8191;
-    egress_object.module = 0;
-    egress_object.port = 0;
-    memcpy(egress_object.mac_addr, system_mac, sizeof(system_mac));
-
-    rv = bcm_l3_egress_create(unit, 0, &egress_object, &punt_l3_interface);
-    if (BCM_FAILURE(rv)) {
-        printf("Error creating egress object entry: %s\n", bcm_errmsg(rv));
-        return rv;
-    }    
-
-    /* L3 defip - default route */
-    bcm_l3_route_t_init(&route_info);
-    route_info.l3a_subnet  = 0x0;
-    route_info.l3a_ip_mask = 0x0;
-    route_info.l3a_intf = host_l3_interface;
-    rv = bcm_l3_route_add(0, &route_info);
-    if (BCM_FAILURE(rv)) {
-        printf("Fail add default l3 route: %s\n", bcm_errmsg(rv));
-    }
-
-    return rv;
-}
-
 
 int do_per_switch_setup(int unit)
 {
@@ -1979,8 +1890,11 @@ int do_per_switch_setup(int unit)
     bcm_port_control_set(unit, 0, bcmPortControlIP4, TRUE);
     bcm_port_control_set(unit, 0, bcmPortControlForwardStaticL2MovePkt, TRUE);
 
-    //setup vlan setting
-    switchdev_vlan_init(unit);
+    bcm_switch_control_set(unit, bcmSwitchL3EgressMode, 1);
+    bcm_switch_control_set(unit, bcmSwitchL3IngressMode, 1);
+    bcm_switch_control_set(unit, bcmSwitchIpmcSameVlanL3Route, 1);
+    bcm_switch_control_set(unit, bcmSwitchL3IngressInterfaceMapSet, 1);
+    bcm_switch_control_set(unit, bcmSwitchL2DstHitEnable, 0);
 
     //Initialize field processor
     switchdev_field_processor_init(unit);
@@ -2430,7 +2344,6 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
         return -1;
     }
 
-
     /* L2 station */
     bcm_l2_station_t_init(&l2_station);
     memcpy(l2_station.dst_mac, system_mac, 6);
@@ -2488,7 +2401,8 @@ static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
     return rv;
 }
 
-int async_obj_intf_create_cb(struct async_object_s *obj)
+
+static int async_obj_intf_create_physical(struct async_object_s *obj)
 {
     int                  rc        = 0;
     bcm_knet_netif_t     netif;
@@ -2585,15 +2499,211 @@ int async_obj_intf_create_cb(struct async_object_s *obj)
     return rc;
 }
 
+
+static int async_obj_intf_create_vlan(struct async_object_s *obj)
+{
+    int                  rc        = 0;
+    int                  unit      = 0;
+    bcm_pbmp_t           pbmp;
+    async_obj_switch_t **sw        = NULL;
+    async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
+    bcm_l2_station_t         l2_station;
+    int                      station_id;
+    bcm_l3_intf_t            l3_intf;
+    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
+
+    //printf("async_obj_intf_create_cb enter\n");
+
+    if (!intf) {
+        return -1;
+    }
+
+    sw = async_obj_switch_find(unit);
+    if (!sw || !(*sw)) {
+        printf("async_obj_intf_create_cb switch NULL\n");
+        return -1;
+    }    
+
+    //create l2 station for the interface
+    bcm_l2_station_t_init(&l2_station);
+    memcpy(l2_station.dst_mac, system_mac, 6);
+    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+    l2_station.vlan         = 0;
+    l2_station.vlan_mask    = 0;
+    l2_station.src_port     = 0;
+    l2_station.src_port_mask = 0;
+
+    rc = bcm_l2_station_add(unit, &station_id, &l2_station);
+	if (BCM_E_NONE != rv) {
+			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rc));
+			return rv;
+	}
+
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, system_mac,6);
+    l3_intf.l3a_vid = 1;
+    l3_intf.l3a_vrf = 0;
+    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+    rc = bcm_l3_intf_create(unit, &l3_intf);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rc));
+       return rv;
+    }
+
+    intf->l3_intf = l3_intf;
+
+    //printf("local if ifindex %d %s port %d l3_intf %d \n", 
+    //       local_if->ifindex, local_if->name, local_if->hw_port, local_if->l3_intf);
+
+    return rc;
+}
+
+int async_obj_intf_create_cb(struct async_object_s *obj)
+{
+    int                  rc        = 0;
+    bcm_knet_netif_t     netif;
+    bcm_knet_filter_t    filter;  
+    int                  unit      = 0;
+    bcm_pbmp_t           pbmp;
+    async_obj_switch_t **sw        = NULL;
+    async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
+
+
+    //printf("async_obj_intf_create_cb enter\n");
+
+    if (!intf) {
+        return -1;
+    }
+
+    switch(intf->type) {
+        case INTF_TYPE_PHYSICAL:
+            return async_obj_intf_create_physical(obj);
+
+        case INTF_TYPE_VLAN:
+            return async_obj_intf_create_vlan(obj);
+
+        default:
+             return -1;
+    }
+
+    return 0;
+}
+
 int async_obj_intf_update_cb(struct async_object_s *obj)
 {
-    return 0;
+    async_obj_intf_t    *intf      = (async_obj_intf_t *)obj;
+
+    if (!intf) {
+        return -1;
+    }
+
+    //update 
+    printf("async_obj_intf_update_cb admin_state_changed %d admin_state %d\n",
+            intf->admin_state_changed, intf->admin_state);
+            
+    if(intf->admin_state_changed) {
+        bcm_port_enable_set(0, intf->hw_port, intf->admin_state);
+    }
 }
 
 int async_obj_intf_delete_cb(struct async_object_s *obj)
 {
     return 0;
 }
+
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_L3HOST     CB                                                       */
+/******************************************************************************************/
+int async_obj_l3host_create_cb(struct async_object_s *obj)
+{
+    async_obj_l3host_t *l3host     = (async_obj_l3host_t *)obj;
+    async_obj_neigh_t **neigh      = NULL;
+    bcm_l3_host_t       host_info;
+    int                 rc;
+
+    if (!l3host) {
+        return -1;
+    }    
+
+    //get host neigh
+    neigh = async_obj_neigh_find_type(NEIGH_FORUS);
+    if(!neigh || !(*neigh)) {
+        printf("async_obj_l3host_create_cb forus neigh not found\n");
+        return -1;
+    }
+
+    bcm_l3_host_t_init(&host_info);
+    host_info.l3a_lookup_class = l3host->lookup_class;
+    host_info.l3a_intf = (*neigh)->object_id; 
+
+    if (l3host->host.protocol == AF_INET) {
+        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
+        //        ifindex, ifname, ipv4_addr, prefixlen);
+        host_info.l3a_ip_addr = l3host->host.ip[0]; 
+    } else if  (l3host->host.protocol == AF_INET6) {
+        host_info.l3a_flags =  BCM_L3_IP6;
+        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
+        memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);
+    }
+
+    rc = bcm_l3_host_add(0, &host_info);
+
+    if(!rc) {
+        printf("async_obj_l3host_create_cb bcm_l3_host_add failed, rc = %d\n", rc);
+    }
+    return rc;
+}
+
+int async_obj_l3host_update_cb(struct async_object_s *obj)
+{
+    return 0;
+}
+
+int async_obj_l3host_delete_cb(struct async_object_s *obj)
+{
+    async_obj_l3host_t *l3host     = (async_obj_l3host_t *)obj;
+    async_obj_neigh_t **neigh      = NULL;
+    bcm_l3_host_t       host_info;
+    int                 rc;
+
+    if (!l3host) {
+        return -1;
+    }    
+
+    //get host neigh
+    neigh = async_obj_neigh_find_type(NEIGH_FORUS);
+    if(!neigh || !(*neigh)) {
+        printf("async_obj_l3host_create_cb forus neigh not found\n");
+        return -1;
+    }
+
+    bcm_l3_host_t_init(&host_info);
+    host_info.l3a_lookup_class = l3host->lookup_class;
+    host_info.l3a_intf = (*neigh)->object_id; 
+
+    if (l3host->host.protocol == AF_INET) {
+        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
+        //        ifindex, ifname, ipv4_addr, prefixlen);
+        host_info.l3a_ip_addr = l3host->host.ip[0]; 
+    } else if  (l3host->host.protocol == AF_INET6) {
+        host_info.l3a_flags =  BCM_L3_IP6;
+        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
+        memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);
+    }
+
+    rc = bcm_l3_host_delete(0, &host_info);
+
+    if(!rc) {
+        printf("async_obj_l3host_delete_cb bcm_l3_host_delete failed, rc = %d\n", rc);
+    }
+    return rc;
+}
+
 
 /******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_NEIGH       CB                                                      */
@@ -2613,16 +2723,26 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
         return -1;
     }
 
-    intf = async_obj_intf_find(neigh->ifindex); 
-    if (!intf || !(*intf)) {
-        printf("async_obj_neigh_create_cb local_if NULL\n");
-        return -1;
-    }
-    
     bcm_l3_egress_t_init(&egress_object);
-    egress_object.intf = (*intf)->l3_intf;
-    egress_object.port = (*intf)->hw_port;
-    egress_object.vlan = (*intf)->vlan;      //should always be 4095
+
+    if (neigh->type == NEIGH_DYNAMIC) {}
+        //intf information not preset, need to get from interface
+        intf = async_obj_intf_find(neigh->ifindex); 
+        if (!intf || !(*intf)) {
+            printf("async_obj_neigh_create_cb local_if NULL\n");
+            return -1;
+        }
+    
+        egress_object.intf   = (*intf)->l3_intf;
+        egress_object.port   = (*intf)->hw_port;
+        egress_object.vlan   = (*intf)->vlan;      //should always be 4095
+    } else if (neigh->type == NEIGH_FORUS) {
+        egress_object.intf   = 8191;
+        egress_object.module = 0;
+        egress_object.port   = 0;
+        egress_object.vlan   = 0;
+    } 
+
     memcpy(egress_object.mac_addr, neigh->mac_addr, ETHER_ADDR_LEN);
 
     // create l3 egress
@@ -2702,8 +2822,6 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
         printf("async_obj_fib_create_cb neigh parent not found\n");
         return -1;
     }
-
-    //TODO if object_id exist, do not need to program ASIC
 
     bcm_l3_route_t_init(&route_info);
 

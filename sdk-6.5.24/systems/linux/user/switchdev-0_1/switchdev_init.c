@@ -70,8 +70,9 @@ int switchdev_portconfig_init(int unit)
             printf("Failed to new async_obj_intf for %s\n", ifname);
             continue;
         }
+        (*local_if)->type      = INTF_TYPE_PHYSICAL;
         (*local_if)->hw_port   = port;
-        (*local_if)->port_type = TYPE_ROUTED_PORT;
+        (*local_if)->port_mode = TYPE_ROUTED_PORT;
 
     
         (*local_if)->object_add_parent((async_object_t *)*local_if, (async_object_t *)*vlan);
@@ -195,6 +196,10 @@ int main( int argc, char *argv[] )
     switch_service_t     *sys    = NULL;
     async_obj_switch_t  **sw     = NULL;
     async_obj_vlan_t    **vlan   = NULL;
+    async_obj_intf_t    **intf   = NULL;
+    async_obj_fib_t     **fib    = NULL;
+    async_obj_neigh_t   **neigh  = NULL;
+    ip_address_t          ip_default;
 
     //parse argv
 
@@ -216,10 +221,10 @@ int main( int argc, char *argv[] )
     (*sw)->object_download((async_object_t *)*sw);
 
 
-    //Create vlan 4095 - default vlan for routed port
+    //Create vlan 4095 - internal vlan for routed port
     vlan = async_obj_vlan_find_or_new((*sw)->route_vlan);
     if (!vlan) {
-        return -1;
+        goto init_fail;
     }    
     (*vlan)->if_class        = 1;
     (*vlan)->block_broadcast = 1;
@@ -227,6 +232,64 @@ int main( int argc, char *argv[] )
     (*vlan)->object_add_parent((async_object_t *)*vlan, (async_object_t *)*sw);
     (*vlan)->object_create((async_object_t *)*vlan);
     (*vlan)->object_download((async_object_t *)*vlan);
+
+    //Create CPU neighbour (FORUS)
+    neigh = async_obj_neigh_new();
+    if (!neigh) {
+        // should not happen
+        goto init_fail;
+    }
+    (*neigh)->type = NEIGH_FORUS;
+    memcpy((*neigh)->mac_addr, system_mac, ETHER_ADDR_LEN);
+    (*neigh)->object_create((async_object_t *)(*neigh));
+    (*neigh)->object_download((async_object_t *)*neigh);
+
+    //Create vlan 1 - default vlan, enable l3
+    vlan = NULL;
+    vlan = async_obj_vlan_find_or_new(1);
+    if (!vlan) {
+        goto init_fail;
+    }      
+    (*vlan)->object_add_parent((async_object_t *)*vlan, (async_object_t *)*sw);
+    (*vlan)->object_create((async_object_t *)*vlan);
+    (*vlan)->object_download((async_object_t *)*vlan);
+
+    //Create vlan 1 virtual interface 
+    intf = async_obj_intf_new("Vlan1");
+    if(intf) {
+        printf("Failed to new async_obj_intf for Vlan1\n");
+        continue;
+    }
+    (*intf)->type      = INTF_TYPE_VLAN;
+    (*intf)->port_mode = TYPE_ROUTED_PORT;
+
+    (*intf)->object_add_parent((async_object_t *)*intf, (async_object_t *)*vlan);
+    (*intf)->object_create((async_object_t *)*intf);
+    (*intf)->object_download((async_object_t *)*intf);     
+
+    //Create default route for vlan 1
+    ip_default.protocol = AF_INET;
+    ip_default.ip[0]    = 0;
+
+    //create new default neigh 
+    neigh = NULL;
+    neigh = async_obj_neigh_find_or_new(&ip_default);
+    if (!neigh) {
+        // should not happen
+        goto init_fail;
+    }
+
+    fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
+    if (!fib) {
+        // should not happen
+        goto init_fail;
+    }
+
+    (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
+
+    (*fib)->object_create((async_object_t *)*fib);
+
+    (*fib)->object_download((async_object_t *)*fib);
 
     //Create ports from port_config.ini
     rc = switchdev_portconfig_init(0);

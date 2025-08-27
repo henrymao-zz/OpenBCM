@@ -514,7 +514,6 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
 
     obj->l3_intf = -1;
 
-
     snprintf(obj->name, IF_NAMESIZE, "%s", ifname);
 
     LIST_INSERT_HEAD(&(sys->switch_db.lif_list), entry, system_next);
@@ -522,7 +521,87 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
     return (async_obj_intf_t**)&(entry->obj);
 }
 
+/******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_L3HOST                                                              */
+/******************************************************************************************/
+async_obj_l3host_t** async_obj_l3host_find_or_new(ip_address_t *host)
+{
+    switch_service_t    *sys   = NULL;
+    async_obj_entry_t   *entry = NULL;
+    async_obj_l3host_t  *obj   = NULL;
+    async_obj_l3host_t **objp  = NULL;
 
+    if (!(sys = system_get_instance()))
+        return NULL;
+   
+    if ((objp = async_obj_l3host_find(host)))
+        return objp;
+
+    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
+    {
+        printf("l3host entry malloc failed host 0x%x \n",  host->ip[0]);
+        return NULL;
+    }
+
+    if (!(obj = (async_obj_l3host_t*)malloc(sizeof(async_obj_l3host_t))))
+    {
+        free(entry);
+        printf("l3host object malloc failed host 0x%x \n",  host->ip[0]);
+        return NULL;
+    }
+
+    printf("async_obj_l3host_find_or_new new obj for 0x%x\n", host->ip[0]);
+
+    memset(entry, 0, sizeof(async_obj_l3host_t));
+    entry->obj = (async_object_t *)obj;
+
+    memset(obj, 0, sizeof(async_obj_l3host_t));
+    //initialize object base
+    obj->state      = ASYNC_OBJ_STATE_NEW;
+    obj->type       = ASYNC_OBJ_TYPE_L3HOST;
+    pthread_mutex_init(&obj->lock, NULL);
+    LIST_INIT(&(obj->parent_list));
+    LIST_INIT(&(obj->child_list));
+
+    obj->object_create     = async_object_create;    
+    obj->object_delete     = async_object_delete;
+    obj->object_download   = async_object_download;
+    obj->object_add_parent = async_object_add_parent;
+
+    obj->object_create_cb  = async_obj_l3host_create_cb;
+    obj->object_update_cb  = async_obj_l3host_update_cb;
+    obj->object_delete_cb  = async_obj_l3host_delete_cb;
+
+    //initialize object specific
+    memcpy(&obj->host, host, sizeof(ip_address_t));
+
+    LIST_INSERT_HEAD(&sys->switch_db.object_db, entry, system_next);
+
+    return (async_obj_l3host_t**)&(entry->obj);
+
+}
+
+async_obj_l3host_t** async_obj_l3host_find(ip_address_t *host)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_l3host_t *obj   = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(entry, &sys->switch_db.object_db, system_next)
+    {
+        obj = (async_obj_l3host_t *)entry->obj;
+        if (obj) {
+            if (memcmp(&(obj->host), host, sizeof(ip_address_t)) == 0)
+                return (async_obj_l3host_t**)&(entry->obj);
+        }
+    }
+
+    return NULL;
+
+}
 
 /******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_NEIGH                                                               */
@@ -541,6 +620,27 @@ async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
         obj = (async_obj_neigh_t *)entry->obj;
         if (obj) {
             if (memcmp(&(obj->nh), nh, sizeof(ip_address_t)) == 0)
+                return (async_obj_neigh_t**)&(entry->obj);
+        }
+    }
+
+    return NULL;
+}
+
+async_obj_neigh_t** async_obj_neigh_find_type(int type)
+{
+    switch_service_t  *sys   = NULL;
+    async_obj_entry_t *entry = NULL;
+    async_obj_neigh_t *obj   = NULL;
+
+    if ((sys = system_get_instance()) == NULL)
+        return NULL;
+
+    LIST_FOREACH(entry, &sys->switch_db.object_db, system_next)
+    {
+        obj = (async_obj_neigh_t *)entry->obj;
+        if (obj) {
+            if (obj->type == type)
                 return (async_obj_neigh_t**)&(entry->obj);
         }
     }
@@ -597,6 +697,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
     obj->object_delete_cb  = async_obj_neigh_delete_cb;
 
     //initialize object specific
+    obj->type       = NEIGH_DYNAMIC;
     obj->object_id  = -1;
     memcpy(&obj->nh, nh, sizeof(ip_address_t));
 
@@ -605,6 +706,60 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
     return (async_obj_neigh_t**)&(entry->obj);
 }
 
+
+async_obj_neigh_t** async_obj_neigh_new(void)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_neigh_t  *obj   = NULL;
+    async_obj_neigh_t **objp  = NULL;
+
+    if (!(sys = system_get_instance()))
+        return NULL;
+   
+    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
+    {
+        printf("neigh entry malloc failed nh 0x%x \n",  nh->ip[0]);
+        return NULL;
+    }
+
+    if (!(obj = (async_obj_neigh_t*)malloc(sizeof(async_obj_neigh_t))))
+    {
+        free(entry);
+        printf("neigh object malloc failed nh 0x%x \n",  nh->ip[0]);
+        return NULL;
+    }
+
+    //printf("async_obj_neigh_find_or_new new obj for 0x%x\n", nh->ip[0]);
+
+    memset(entry, 0, sizeof(async_obj_entry_t));
+    entry->obj = (async_object_t *)obj;
+
+    memset(obj, 0, sizeof(async_obj_neigh_t));
+    //initialize object base
+    obj->state      = ASYNC_OBJ_STATE_NEW;
+    obj->type       = ASYNC_OBJ_TYPE_NEIGH;
+    pthread_mutex_init(&obj->lock, NULL);
+    LIST_INIT(&(obj->parent_list));
+    LIST_INIT(&(obj->child_list));
+
+    obj->object_create     = async_object_create;    
+    obj->object_delete     = async_object_delete;
+    obj->object_download   = async_object_download;
+    obj->object_add_parent = async_object_add_parent;
+
+    obj->object_create_cb  = async_obj_neigh_create_cb;
+    obj->object_update_cb  = async_obj_neigh_update_cb;
+    obj->object_delete_cb  = async_obj_neigh_delete_cb;
+
+    //initialize object specific
+    obj->object_id  = -1;
+    obj->type       = NEIGH_DYNAMIC;
+
+    LIST_INSERT_HEAD(&sys->switch_db.object_db, entry, system_next);
+
+    return (async_obj_neigh_t**)&(entry->obj);
+}
 
 
 /******************************************************************************************/

@@ -140,10 +140,17 @@ async_obj_vlan_t** async_obj_vlan_find(int vid);
 /******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_INTF                                                                */
 /******************************************************************************************/
-enum port_type_e {
+enum port_mode_e {
     TYPE_ROUTED_PORT,
     TYPE_SWITCH_PORT,
 };
+
+enum port_type_e {
+    INTF_TYPE_VLAN,
+    INTF_TYPE_PHYSICAL,
+};
+
+
 typedef struct async_obj_intf_s {
     //base object, must be same as async_object_t
     int              state;
@@ -166,14 +173,19 @@ typedef struct async_obj_intf_s {
     char name[IF_NAMESIZE+1]; 
 
     /* hardware information */
-    int hw_port;                  // hardware port id
-    int port_type;                // routed port vs switchport
-    int l3_intf;
-    int vlan;                     // should always be 4095 for routed port
+    int  type;                     // VLAN, PHYSICAL etc
+    
+    int  admin_state;              // enable = TRUE, disable = FALSE
+    bool admin_state_changed;
 
-    int autoneg;
-    int pause_tx;
-    int pause_rx;
+    int  hw_port;                  // hardware port id
+    int  port_mode;                // routed port vs switchport
+    int  l3_intf;
+    int  vlan;                     // should always be 4095 for routed port
+
+    int  autoneg;
+    int  pause_tx;
+    int  pause_rx;
 
 }async_obj_intf_t;
 
@@ -181,11 +193,44 @@ async_obj_intf_t** async_obj_intf_new(char* ifname);
 async_obj_intf_t** async_obj_intf_find(int ifindex);
 
 /******************************************************************************************/
+/*     ASYNC_OBJ_TYPE_L3HOST                                                              */
+/******************************************************************************************/
+typedef struct async_obj_l3host_s {
+    //base object, must be same as async_object_t
+    int              state;
+    int              type;    
+	pthread_mutex_t  lock;
+
+	LIST_HEAD(obj_l3host_parent_list_t, async_obj_entry_s)   parent_list;
+	LIST_HEAD(obj_l3host_child_list_t, async_obj_entry_s)    child_list;
+
+    object_create_func     object_create;
+    object_delete_func     object_delete;
+	object_download_func   object_download;
+	object_add_parent_func object_add_parent;
+
+	object_create_cb_func  object_create_cb;
+	object_update_cb_func  object_update_cb;
+	object_delete_cb_func  object_delete_cb;
+
+    //l3host specfic	
+    ip_address_t       host;
+    int                lookup_class;
+} async_obj_l3host_t;
+
+async_obj_l3host_t** async_obj_l3host_find_or_new(ip_address_t *host);
+async_obj_l3host_t** async_obj_l3host_find(ip_address_t *host);
+
+
+/******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_NEIGH                                                               */
 /******************************************************************************************/
 
 #define ETHER_ADDR_LEN 6
-
+enum neigh_type_e {
+     NEIGH_DYNAMIC,
+     NEIGH_FORUS,
+};
 
 typedef struct async_obj_neigh_s {
     //base object, must be same as async_object_t
@@ -206,15 +251,16 @@ typedef struct async_obj_neigh_s {
 	object_delete_cb_func  object_delete_cb;
 
     //neigh specfic	
+    int                type;
     int                object_id;
     ip_address_t       nh;
     uint8_t            mac_addr[ETHER_ADDR_LEN];
     int                ifindex;   //linux ifindex
-
 } async_obj_neigh_t;
 
 async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh);
 async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh);
+async_obj_neigh_t** async_obj_neigh_find_type(int type);
 
 
 /******************************************************************************************/

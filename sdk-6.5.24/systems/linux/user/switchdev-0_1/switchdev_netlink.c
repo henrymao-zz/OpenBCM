@@ -277,14 +277,14 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 
 void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
 {
-#if 0
-    struct nl_addr    *nl_addr;
-    uint32_t           ifindex;
-    struct rtnl_addr  *addr;
-    char               ifname[IF_NAMESIZE+1];
-    uint32_t           ipv4_addr, *ipv6_addr;
-    bcm_l3_host_t      host_info;
-    local_interface_t *local_if;
+    async_obj_intf_t   **local_if  = NULL;
+    async_obj_l3host_t **l3host    = NULL;    
+    struct nl_addr      *nl_addr   = NULL;
+    struct rtnl_addr    *addr      = NULL;
+    uint32_t             ifindex;    
+    char                 ifname[IF_NAMESIZE+1];
+    uint32_t             ipv4_addr, *ipv6_addr;
+    ip_address_t         host;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -292,8 +292,8 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
     ifindex = rtnl_addr_get_ifindex(addr);
     if_indextoname(ifindex, ifname);
 
-    local_if = local_if_find_by_ifindex(ifindex);
-    if(!local_if) {
+    local_if = async_obj_intf_find(ifindex);
+    if(!local_if || !(*local_if)) {
         printf("handle newaddr failed to find local if %d %s\n", ifindex, ifname);
         return;
     }
@@ -301,44 +301,48 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
     nl_addr = rtnl_addr_get_local(addr);
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
-        ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        ipv4_addr     = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        host.protocol = AF_INET;
+        host.ip[0]    = ntohl(ipv4_addr);
 
         //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
         //        ifindex, ifname, ipv4_addr, prefixlen);
-
-        //Create l3table, and bind to l3 egress object
-        bcm_l3_host_t_init(&host_info);
-        host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
-		host_info.l3a_intf = punt_l3_interface;
-		host_info.l3a_lookup_class = 1;
-        bcm_l3_host_add(0, &host_info);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
-        ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        ipv6_addr     = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        host.protocol = AF_INET6;        
+        memcpy(host.ip, ipv6_addr, 16);
 
         //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
         //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
-        bcm_l3_host_t_init(&host_info);
-        host_info.l3a_flags =  BCM_L3_IP6;
-        host_info.l3a_intf = punt_l3_interface; 
-        host_info.l3a_lookup_class = 1;
-        memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
-        bcm_l3_host_add(0, &host_info);
     }
-#endif
+
+    l3host = async_obj_l3host_find_or_new(&host);
+
+    if (!l3host || !(*l3host)) {
+        printf("handle_rtm_newaddr l3host new failed\n");
+        return;
+    }
+    (*l3host)->lookup_class = 1;
+
+    //may need to add host neigh as parent
+
+    (*l3host)->object_create((async_object_t *)(*l3host));
+    (*l3host)->object_download((async_object_t *)(*l3host));
+
     return;
 }
 
 void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
 {
-#if 0
-    struct nl_addr    *nl_addr;
-    uint32_t           ifindex;
-    struct rtnl_addr  *addr;
-    char               ifname[IF_NAMESIZE+1];
-    uint32_t           ipv4_addr, *ipv6_addr;
-    bcm_l3_host_t      host_info;
-    local_interface_t *local_if;
+    async_obj_intf_t   **local_if  = NULL;
+    async_obj_l3host_t **l3host    = NULL;    
+    struct nl_addr      *nl_addr   = NULL;
+    struct rtnl_addr    *addr      = NULL;
+    uint32_t             ifindex;    
+    char                 ifname[IF_NAMESIZE+1];
+    uint32_t             ipv4_addr, *ipv6_addr;
+    ip_address_t         host;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -346,39 +350,41 @@ void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
     ifindex = rtnl_addr_get_ifindex(addr);
     if_indextoname(ifindex, ifname);
 
-    local_if = local_if_find_by_ifindex(ifindex);
-    if(!local_if) {
-        printf("handle deladdr failed to find local if %d %s\n", ifindex, ifname);
+    local_if = async_obj_intf_find(ifindex);
+    if(!local_if || !(*local_if)) {
+        printf("handle newaddr failed to find local if %d %s\n", ifindex, ifname);
         return;
     }
 
     nl_addr = rtnl_addr_get_local(addr);
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
-        ipv4_addr = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        ipv4_addr     = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        host.protocol = AF_INET;
+        host.ip[0]    = ntohl(ipv4_addr);
 
-        //printf("ipv4 l3 host del: index %d %s address 0x%x prefix %d\n",
+        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
         //        ifindex, ifname, ipv4_addr, prefixlen);
-
-		bcm_l3_host_t_init(&host_info);
-        host_info.l3a_ip_addr = ntohl(ipv4_addr); // struct in_addr is in network byte order
-		host_info.l3a_intf = punt_l3_interface;
-		host_info.l3a_lookup_class = 1;
-        bcm_l3_host_delete(0, &host_info);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
-        ipv6_addr = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        ipv6_addr     = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
+        host.protocol = AF_INET6;        
+        memcpy(host.ip, ipv6_addr, 16);
 
-        //printf("ipv6 l3 host del: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
+        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
         //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
 
-        bcm_l3_host_t_init(&host_info);
-        host_info.l3a_flags =  BCM_L3_IP6;
-        host_info.l3a_intf = punt_l3_interface; 
-        host_info.l3a_lookup_class = 1;
-        memcpy(host_info.l3a_ip6_addr, ipv6_addr, 16);
-        bcm_l3_host_delete(0, &host_info);
     }
-#endif
+
+    l3host = async_obj_l3host_find(&host);
+
+    if (!l3host || !(*l3host)) {
+        printf("handle_rtm_deladdr l3host find failed\n");
+        return;
+    }
+    (*l3host)->lookup_class = 1;
+
+    (*l3host)->object_delete((async_object_t **)l3host);
+
     return;
 }
 
@@ -400,13 +406,12 @@ void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
 
 void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
 {
-#if 0
     struct rtnl_link  *link = (struct rtnl_link *)obj;
     uint32_t           ifindex = 0;
     char              *ifname;
     //int                op_state = 0;
     int                link_flag = 0;
-    local_interface_t *local_if;
+    async_obj_intf_t **local_if = NULL;
     
 
     ifindex    = rtnl_link_get_ifindex(link);
@@ -416,21 +421,25 @@ void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
 
     //printf("handle newlink for %d %s state %d\n", ifindex, ifname, op_state);
 
-    local_if = local_if_find_by_ifindex(ifindex);
-    if(!local_if) {
+    local_if = async_obj_intf_find(ifindex);
+    if(!local_if||!(*local_if)) {
         printf("handle deladdr failed to find local if %d %s\n", ifindex, ifname);
         return;
     }
 
+    
     //update 
     if (link_flag & IFF_LOWER_UP) {
-        bcm_port_enable_set(0, local_if->hw_port, TRUE);
+        (*local_if)->admin_state         = TRUE;
+        (*local_if)->admin_state_changed = TRUE;
     } else if (!(link_flag & IFF_LOWER_UP)) {
-        bcm_port_enable_set(0, local_if->hw_port, FALSE);
+        (*local_if)->admin_state         = FALSE;
+        (*local_if)->admin_state_changed = TRUE;
     }
 
+    (*local_if)->object_download((async_object_t *)(*local_if));
+
     return;
-#endif
 }
 
 static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
