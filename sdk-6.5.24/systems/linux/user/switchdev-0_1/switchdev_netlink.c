@@ -287,6 +287,7 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
     char                 ifname[IF_NAMESIZE+1];
     uint32_t             ipv4_addr, *ipv6_addr;
     ip_address_t         host;
+    int                  prefixlen;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -300,24 +301,21 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
         return;
     }
 
-    nl_addr = rtnl_addr_get_local(addr);
+    nl_addr   = rtnl_addr_get_local(addr);
+    prefixlen = rtnl_addr_get_prefixlen(addr);
 
+    memset(&host, 0, sizeof(host));
     if (rtnl_addr_get_family(addr) == AF_INET) {
         ipv4_addr     = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
         host.protocol = AF_INET;
         host.ip[0]    = ntohl(ipv4_addr);
-
-        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
-        //        ifindex, ifname, ipv4_addr, prefixlen);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr     = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         host.protocol = AF_INET6;        
         memcpy(host.ip, ipv6_addr, 16);
-
-        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
-        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
-
     }
+    //printf("handle_rtm_newaddr l3 host add: index %d %s address %s/%d\n",
+    //       ifindex, ifname, ipaddr2str(&host), prefixlen); 
 
     l3host = async_obj_l3host_find_or_new(&host);
 
@@ -345,6 +343,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
     char                 ifname[IF_NAMESIZE+1];
     uint32_t             ipv4_addr, *ipv6_addr;
     ip_address_t         host;
+    int                  prefixlen;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -358,24 +357,22 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
         return;
     }
 
-    nl_addr = rtnl_addr_get_local(addr);
+    nl_addr   = rtnl_addr_get_local(addr);
+    prefixlen = rtnl_addr_get_prefixlen(addr);
+
+    memset(&host, 0, sizeof(host));
 
     if (rtnl_addr_get_family(addr) == AF_INET) {
         ipv4_addr     = *(uint32_t *) nl_addr_get_binary_addr(nl_addr);
         host.protocol = AF_INET;
         host.ip[0]    = ntohl(ipv4_addr);
-
-        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
-        //        ifindex, ifname, ipv4_addr, prefixlen);
     } else if  (rtnl_addr_get_family(addr) == AF_INET6) {
         ipv6_addr     = (uint32_t *) nl_addr_get_binary_addr(nl_addr);
         host.protocol = AF_INET6;        
         memcpy(host.ip, ipv6_addr, 16);
-
-        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
-        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
-
     }
+    //printf("handle_rtm_deladdr l3 host del: index %d %s address %s/%d\n",
+    //       ifindex, ifname, ipaddr2str(&host), prefixlen); 
 
     l3host = async_obj_l3host_find(&host);
 
@@ -674,7 +671,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     if (rtm->rtm_scope != RT_SCOPE_UNIVERSE || rtm->rtm_type != RTN_UNICAST) {
           printf("msgtype %d route scope %d type %d ifindex %d dst %s/%d gw %s\n",
                  msgtype, rtm->rtm_scope, rtm->rtm_type, ifindex, 
-                 format_ipaddr(&ip_dst), rtm->rtm_dst_len, format_ipaddr(&ip_gw));
+                 ipaddr2str(&ip_dst), rtm->rtm_dst_len, ipaddr2str(&ip_gw));
           return 0;
     }
 
@@ -683,7 +680,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         async_obj_fib_t     **fib   = NULL;
 
         printf("add ipv4 route : ifindex %d  dst %s/%d gw %s\n",
-               ifindex, format_ipaddr(&ip_dst), rtm->rtm_dst_len, format_ipaddr(&ip_gw));        
+               ifindex, ipaddr2str(&ip_dst), rtm->rtm_dst_len, ipaddr2str(&ip_gw));        
 
         // if ip neigh does not exist, create a new obj
         neigh = async_obj_neigh_find_or_new(&ip_gw);
@@ -711,7 +708,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         async_obj_fib_t     **fib = NULL;
 
         printf("del ipv4 route : ifindex %d  dst %s/%d gw %s\n",
-               ifindex, format_ipaddr(&ip_dst), rtm->rtm_dst_len, format_ipaddr(&ip_gw));
+               ifindex, ipaddr2str(&ip_dst), rtm->rtm_dst_len, ipaddr2str(&ip_gw));
         fib = async_obj_fib_find(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
 
         if (!fib) {

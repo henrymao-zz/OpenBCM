@@ -48,6 +48,7 @@
 #include <opennsa/l3.h>
 #include <opennsa/range.h>
 
+#include "switchdev_utils.h"
 #include "switchdev_async_obj.h"
 
 
@@ -2609,6 +2610,7 @@ int async_obj_intf_update_cb(struct async_object_s *obj)
             
     if(intf->admin_state_changed) {
         rc = bcm_port_enable_set(0, intf->hw_port, intf->admin_state);
+        intf->admin_state_changed = false;
     }
     return rc;
 }
@@ -2644,20 +2646,21 @@ int async_obj_l3host_create_cb(struct async_object_s *obj)
     host_info.l3a_intf = (*neigh)->object_id; 
 
     if (l3host->host.protocol == AF_INET) {
-        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
-        //        ifindex, ifname, ipv4_addr, prefixlen);
         host_info.l3a_ip_addr = l3host->host.ip[0]; 
     } else if  (l3host->host.protocol == AF_INET6) {
         host_info.l3a_flags =  BCM_L3_IP6;
-        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
-        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
         memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);
     }
+
+    //printf("async_obj_l3host_create_cb %s\n", ipaddr2str(&l3host->host));
 
     rc = bcm_l3_host_add(0, &host_info);
 
     if(rc) {
-        printf("async_obj_l3host_create_cb bcm_l3_host_add failed, rc = %d\n", rc);
+        if (rc == BCM_E_EXISTS) {
+            return 0;
+        }
+        printf("async_obj_l3host_create_cb bcm_l3_host_add %s failed, rc = %d\n",ipaddr2str(&l3host->host), rc);
     }
     return rc;
 }
@@ -2690,20 +2693,16 @@ int async_obj_l3host_delete_cb(struct async_object_s *obj)
     host_info.l3a_intf = (*neigh)->object_id; 
 
     if (l3host->host.protocol == AF_INET) {
-        //printf("ipv4 l3 host add: index %d %s address 0x%x prefix %d\n",
-        //        ifindex, ifname, ipv4_addr, prefixlen);
         host_info.l3a_ip_addr = l3host->host.ip[0]; 
     } else if  (l3host->host.protocol == AF_INET6) {
         host_info.l3a_flags =  BCM_L3_IP6;
-        //printf("ipv6 l3 host add: index %d %s address 0x%x 0x%x 0x%x 0x%x  prefix %d\n",
-        //        ifindex, ifname, ipv6_addr[0], ipv6_addr[1], ipv6_addr[2], ipv6_addr[3], prefixlen);
         memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);
     }
 
     rc = bcm_l3_host_delete(0, &host_info);
 
-    if(!rc) {
-        printf("async_obj_l3host_delete_cb bcm_l3_host_delete failed, rc = %d\n", rc);
+    if(rc) {
+       printf("async_obj_l3host_delete_cb bcm_l3_host_delete failed, rc = %d\n", rc);
     }
     return rc;
 }
@@ -2843,7 +2842,7 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
     if (!neigh) {
         //should not happen
         printf("async_obj_fib_create_cb neigh parent not found %s/%d gw %s\n",
-                format_ipaddr(&fib->dst), fib->dst_len, format_ipaddr(&fib->nh));
+                ipaddr2str(&fib->dst), fib->dst_len, ipaddr2str(&fib->nh));
         return -1;
     }
 

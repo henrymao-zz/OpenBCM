@@ -8,6 +8,6 @@ typedef struct ip_address_s {
 }ip_address_t;
 
 
-char *format_ipaddr(ip_address_t *ipaddr);
+char *ipaddr2str(ip_address_t *ipaddr);
 
 #endif

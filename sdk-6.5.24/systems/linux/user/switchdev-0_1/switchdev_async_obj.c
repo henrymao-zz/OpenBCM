@@ -18,6 +18,7 @@
 #include <pthread.h>
 
 
+#include "switchdev_utils.h"
 #include "switchdev_async_obj.h"
 #include "switchdev_broadcom.h"
 
@@ -570,14 +571,14 @@ async_obj_l3host_t** async_obj_l3host_find_or_new(ip_address_t *host)
 
     if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
-        printf("l3host entry malloc failed host 0x%x \n",  host->ip[0]);
+        printf("l3host entry malloc failed host %s\n",  ipaddr2str(host));
         return NULL;
     }
 
     if (!(obj = (async_obj_l3host_t*)malloc(sizeof(async_obj_l3host_t))))
     {
         free(entry);
-        printf("l3host object malloc failed host 0x%x \n",  host->ip[0]);
+        printf("l3host object malloc failed host %s\n",  ipaddr2str(host));
         return NULL;
     }
 
@@ -624,7 +625,7 @@ async_obj_l3host_t** async_obj_l3host_find(ip_address_t *host)
     LIST_FOREACH(entry, &sys->switch_db.object_db, system_next)
     {
         obj = (async_obj_l3host_t *)entry->obj;
-        if (obj) {
+        if (obj &&obj->type == ASYNC_OBJ_TYPE_L3HOST) {
             if (memcmp(&(obj->host), host, sizeof(ip_address_t)) == 0)
                 return (async_obj_l3host_t**)&(entry->obj);
         }

@@ -16,6 +16,7 @@
 #include <appl/diag/opennsa_diag.h>
 #endif
 
+#include "switchdev_utils.h"
 #include "switchdev_netlink.h"
 #include "switchdev_async_obj.h"
 
