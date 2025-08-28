@@ -508,17 +508,19 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     }
 
     //printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
-    //       msgtype, ndm->ndm_ifindex, ifname, ipv4_addr, 
+    //       msgtype, ndm->ndm_ifindex, ifname, ip_addr.ip[0], 
 	//       mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);        
     if (msgtype != RTM_DELNEIGH) { 
         async_obj_neigh_t   **neigh = NULL;
 
         neigh = async_obj_neigh_find_or_new(&ip_addr);
-        if (!neigh) {
+        if (!neigh || !(*neigh)) {
             return 0;
         }
         memcpy((*neigh)->mac_addr, mac_addr, ETHER_ADDR_LEN);
         (*neigh)->ifindex = ndm->ndm_ifindex;
+
+        //printf("   neigh %p nh 0x%x\n", *neigh, (*neigh)->nh.ip[0]);
 
         //TODO, handle neigh MAC change case
         (*neigh)->object_create((async_object_t *)(*neigh));
@@ -682,17 +684,18 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 
         // if ip neigh does not exist, create a new obj
         neigh = async_obj_neigh_find_or_new(&ip_gw);
-        if (!neigh) {
+        if (!neigh || !(*neigh)) {
             // should not happen
             return 0;
         }
 
         // if fib does not exist, create a new fib
         fib = async_obj_fib_find_or_new(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
-        if (!fib) {
+        if (!fib || !(*fib)) {
             // should not happen
             return 0;
         }
+        printf("    neigh %p state %d ip 0x%x\n",(*neigh), (*neigh)->state, (*neigh)->nh.ip[0]);
 
         (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
 

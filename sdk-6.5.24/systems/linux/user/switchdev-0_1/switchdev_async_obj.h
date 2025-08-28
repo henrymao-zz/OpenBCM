@@ -260,7 +260,7 @@ typedef struct async_obj_neigh_s {
     ip_address_t       nh;
     uint8_t            mac_addr[ETHER_ADDR_LEN];
     int                ifindex;               //linux ifindex
-    int                ifname[IF_NAMESIZE];   //linux ifname
+    char               ifname[IF_NAMESIZE];   //linux ifname
     int                hw_port;               // asic port
     int                vlan_id;
 } async_obj_neigh_t;

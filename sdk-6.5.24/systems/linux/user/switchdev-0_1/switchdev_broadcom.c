@@ -2298,6 +2298,8 @@ int async_obj_vlan_create_cb(struct async_object_s *obj)
     if(rc) {
         if (rc != BCM_E_EXISTS) {
             printf("async_obj_vlan_create_cb failed to create vlan %d rc %d\n",vlan->vid, rc);
+        } else {
+            return 0;
         }
         return rc;
     }
@@ -2720,7 +2722,7 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
     int                rc        = 0;
     int                object_id = -1;
 
-    //printf("async_obj_neigh_create_cb enter\n");
+    //printf("async_obj_neigh_create_cb %p enter\n", obj);
 
     if (!neigh) {
         return -1;
@@ -2728,7 +2730,7 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
 
     sw = async_obj_switch_find_or_new(0);
     if (!sw || !(*sw)) {
-        print("async_obj_neigh_create_cb NULL sw\n");
+        printf("async_obj_neigh_create_cb NULL sw\n");
         return -1;
     }
 
@@ -2757,7 +2759,7 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
             if (!intf || !(*intf)) {
                 return -1;
                 printf("async_obj_neigh_create_cb forus vlan %d failed to find intf %s", 
-                        neigh->vlan_id, neigh->ifname;
+                        neigh->vlan_id, neigh->ifname);
             }
             egress_object.intf   = (*intf)->l3_intf;
             egress_object.vlan   = neigh->vlan_id;
@@ -2768,7 +2770,7 @@ int async_obj_neigh_create_cb(struct async_object_s *obj)
 
     // create l3 egress
     rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);    
-    if (BCM_FAILURE(rc)) {
+    if (rc) {
         printf("async_obj_neigh_create_cb l3_egress create failed %d\n", rc);
     } 
     neigh->object_id = object_id;
@@ -2840,7 +2842,8 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
     }
     if (!neigh) {
         //should not happen
-        printf("async_obj_fib_create_cb neigh parent not found\n");
+        printf("async_obj_fib_create_cb neigh parent not found 0x%x/%d gw 0x%x\n",
+                fib->dst.ip[0], fib->dst_len, fib->nh.ip[0]);
         return -1;
     }
 
@@ -2848,7 +2851,12 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
 
     if (fib->dst.protocol == AF_INET) {
         route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
-        route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+        if (fib->dst_len == 0) {
+            route_info.l3a_ip_mask = 0;
+        } else {
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+        }
+        //printf("async_obj_fib_create_cb l3a_subnet %x l3a_ip_mask %x\n", route_info.l3a_subnet, route_info.l3a_ip_mask);
     } else {
         route_info.l3a_flags = BCM_L3_IP6;
         memcpy(route_info.l3a_ip6_net, fib->dst.ip, 16);

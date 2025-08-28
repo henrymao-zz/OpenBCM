@@ -273,6 +273,7 @@ int main( int argc, char *argv[] )
     }
     (*intf)->if_type   = INTF_TYPE_VLAN;
     (*intf)->port_mode = TYPE_ROUTED_PORT;
+    (*intf)->vlan      = 1;
 
     (*intf)->object_add_parent((async_object_t *)*intf, (async_object_t *)*vlan);
     (*intf)->object_create((async_object_t *)*intf);
@@ -282,9 +283,9 @@ int main( int argc, char *argv[] )
     ip_default.protocol = AF_INET;
     ip_default.ip[0]    = 0;
 
-    //create vlan 1 neigh 
+    //create vlan 1 neigh forus 
     neigh = NULL;
-    neigh = async_obj_neigh_find_or_new(&ip_default);
+    neigh = async_obj_neigh_new();
     if (!neigh || !(*neigh)) {
         // should not happen
         goto init_fail;

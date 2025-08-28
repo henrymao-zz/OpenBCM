@@ -173,8 +173,9 @@ int async_object_delete(async_object_t **obj)
 
 int async_object_download(async_object_t *obj)
 {
-    async_obj_entry_t *entry = NULL;
-    switch_service_t  *sys = NULL;
+    async_obj_entry_t *entry  = NULL;
+    async_obj_entry_t *parent = NULL;
+    switch_service_t  *sys    = NULL;
 
     //put obj into download list, which will be used by obj download thread
 
@@ -218,6 +219,20 @@ int async_object_download(async_object_t *obj)
 
     //printf("async_object_download obj %p \n", obj);
 
+    // if parent is not in download list, add parent to download list
+    //if parent is not in download list, add parent to download list
+    LIST_FOREACH(parent, &(obj->parent_list), system_next) {
+        if (!parent->obj) {
+            //should not happen, ignore this parent
+            continue;
+        }
+
+        if (parent->obj->state == ASYNC_OBJ_STATE_IDLE) {
+            //printf("async_object_add_parent trigger parent download %p\n", parent);
+            parent->obj->object_download(parent->obj);
+        }
+    }
+
     pthread_mutex_lock(&(sys->object_lock));
     LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
     pthread_mutex_unlock(&(sys->object_lock));
@@ -230,7 +245,6 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
 {
     async_obj_entry_t *entry = NULL, *entry_p = NULL;
     switch_service_t  *sys = NULL;
-    int                rc = 0;
 
     if (!(sys = system_get_instance())) {
         return 0;
@@ -275,19 +289,6 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
     pthread_mutex_lock(&(obj->lock));
     LIST_INSERT_HEAD(&(obj->parent_list), entry_p, system_next);
     pthread_mutex_unlock(&(obj->lock));
-
-    //if parent is not in download list, add parent to download list
-    pthread_mutex_lock(&(parent->lock));
-    if (parent->state == ASYNC_OBJ_STATE_IDLE) {
-        //printf("async_object_add_parent trigger parent download\n");
-        rc = async_object_download(parent);
-        if (rc) {
-            printf("async_object_add_parent object download failed rc = %d\n", rc);
-        } else {
-            parent->state = ASYNC_OBJ_STATE_PENDING;
-        }
-    }
-    pthread_mutex_unlock(&(parent->lock));
 
     return 0;
 }
@@ -727,7 +728,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
     obj->object_delete_cb  = async_obj_neigh_delete_cb;
 
     //initialize object specific
-    obj->type       = NEIGH_DYNAMIC;
+    obj->neigh_type = NEIGH_DYNAMIC;
     obj->object_id  = -1;
     memcpy(&obj->nh, nh, sizeof(ip_address_t));
 
@@ -783,7 +784,7 @@ async_obj_neigh_t** async_obj_neigh_new(void)
 
     //initialize object specific
     obj->object_id  = -1;
-    obj->type       = NEIGH_DYNAMIC;
+    obj->neigh_type       = NEIGH_DYNAMIC;
 
     LIST_INSERT_HEAD(&sys->switch_db.object_db, entry, system_next);
 
@@ -943,6 +944,7 @@ int process_async_object(async_obj_entry_t *entry)
 
             //check if there is child waiting for download, put them into work queue
             LIST_FOREACH(child, &(obj->child_list), system_next) {
+               //printf("    child %p, state %d type %d\n", child->obj, child->obj->state, child->obj->type);
                if (!child->obj) {
                    //should not happen, ignore
                    continue;
