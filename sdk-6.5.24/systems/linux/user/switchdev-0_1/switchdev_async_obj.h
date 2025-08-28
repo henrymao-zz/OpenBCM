@@ -1,11 +1,7 @@
 #ifndef SWITCHDEV_ASYNC_OBJ_H
 #define SWITCHDEV_ASYNC_OBJ_H
 
-// common data structure 
-typedef struct ip_address_s {
-    uint32_t protocol;      //AF_INET4 AF_INET6
-    uint32_t ip[4];
-}ip_address_t;
+
 
 #ifndef container_of
 #define container_of(PTR, TYPE, FIELD) ({			\

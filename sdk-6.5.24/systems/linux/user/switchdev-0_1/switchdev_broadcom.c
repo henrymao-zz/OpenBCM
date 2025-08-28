@@ -2842,8 +2842,8 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
     }
     if (!neigh) {
         //should not happen
-        printf("async_obj_fib_create_cb neigh parent not found 0x%x/%d gw 0x%x\n",
-                fib->dst.ip[0], fib->dst_len, fib->nh.ip[0]);
+        printf("async_obj_fib_create_cb neigh parent not found %s/%d gw %s\n",
+                format_ipaddr(&fib->dst), fib->dst_len, format_ipaddr(&fib->nh));
         return -1;
     }
 

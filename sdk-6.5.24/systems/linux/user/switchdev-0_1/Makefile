@@ -479,7 +479,12 @@ $(DEST_DIR)/libopennsa.a: $(BCM) $(DEST_DIR)
 $(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
 
-SWITCHDEV_OBJ = $(BLDDIR)/switchdev_init.o $(BLDDIR)/switchdev_netlink.o $(BLDDIR)/switchdev_async_obj.o $(BLDDIR)/switchdev_dstty.o $(BLDDIR)/switchdev_broadcom.o
+SWITCHDEV_OBJ = $(BLDDIR)/switchdev_init.o \
+		$(BLDDIR)/switchdev_netlink.o \
+		$(BLDDIR)/switchdev_async_obj.o \
+		$(BLDDIR)/switchdev_dstty.o \
+		$(BLDDIR)/switchdev_broadcom.o\
+		$(BLDDIR)/switchdev_utils.o
 
 $(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \

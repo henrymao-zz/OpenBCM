@@ -31,8 +31,10 @@
 #include <linux/netdevice.h>
 #include <linux/if_bridge.h>
 
+#include "switchdev_utils.h"
 #include "switchdev_netlink.h"
 #include "switchdev_async_obj.h"
+
 
 #define prerr(...) fprintf(stderr, "error: " __VA_ARGS__)
 
@@ -275,7 +277,7 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 	return err;
 }
 
-void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
+void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
 {
     async_obj_intf_t   **local_if  = NULL;
     async_obj_l3host_t **l3host    = NULL;    
@@ -333,7 +335,7 @@ void switchdev_event_handler_rtm_newaddr(struct nl_object *obj, void *arg)
     return;
 }
 
-void switchdev_event_handler_rtm_deladdr(struct nl_object *obj, void *arg)
+void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
 {
     async_obj_intf_t   **local_if  = NULL;
     async_obj_l3host_t **l3host    = NULL;    
@@ -404,7 +406,7 @@ void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
 }
 
 
-void switchdev_event_handler_rtm_newlink(struct nl_object *obj, void *arg)
+void switchdev_event_handle_rtm_newlink(struct nl_object *obj, void *arg)
 {
     struct rtnl_link  *link = (struct rtnl_link *)obj;
     uint32_t           ifindex = 0;
@@ -670,8 +672,9 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     }
 
     if (rtm->rtm_scope != RT_SCOPE_UNIVERSE || rtm->rtm_type != RTN_UNICAST) {
-          printf("msgtype %d route scope %d type %d ifindex %d dst 0x%x/%d gw 0x%x\n",
-                 msgtype, rtm->rtm_scope, rtm->rtm_type, ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);
+          printf("msgtype %d route scope %d type %d ifindex %d dst %s/%d gw %s\n",
+                 msgtype, rtm->rtm_scope, rtm->rtm_type, ifindex, 
+                 format_ipaddr(&ip_dst), rtm->rtm_dst_len, format_ipaddr(&ip_gw));
           return 0;
     }
 
@@ -679,8 +682,8 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         async_obj_neigh_t   **neigh = NULL;
         async_obj_fib_t     **fib   = NULL;
 
-        printf("add ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-               ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);        
+        printf("add ipv4 route : ifindex %d  dst %s/%d gw %s\n",
+               ifindex, format_ipaddr(&ip_dst), rtm->rtm_dst_len, format_ipaddr(&ip_gw));        
 
         // if ip neigh does not exist, create a new obj
         neigh = async_obj_neigh_find_or_new(&ip_gw);
@@ -707,8 +710,8 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     } else {
         async_obj_fib_t     **fib = NULL;
 
-        printf("del ipv4 route : ifindex %d  dst 0x%x/%d gw 0x%x\n",
-               ifindex, ip_dst.ip[0], rtm->rtm_dst_len, ip_gw.ip[0]);
+        printf("del ipv4 route : ifindex %d  dst %s/%d gw %s\n",
+               ifindex, format_ipaddr(&ip_dst), rtm->rtm_dst_len, format_ipaddr(&ip_gw));
         fib = async_obj_fib_find(ifindex, &ip_gw, &ip_dst, rtm->rtm_dst_len);
 
         if (!fib) {
@@ -732,7 +735,7 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
     switch (nlh->nlmsg_type)
     {
         case RTM_NEWLINK:
-            if (nl_msg_parse(msg, &switchdev_event_handler_rtm_newlink, NULL) < 0) {
+            if (nl_msg_parse(msg, &switchdev_event_handle_rtm_newlink, NULL) < 0) {
                 printf("Unknown message type.");
 			}
             break;
@@ -746,12 +749,12 @@ static int switchdev_route_event_handler(struct nl_msg *msg, void *arg)
             break;
 
         case RTM_NEWADDR:
-            if (nl_msg_parse(msg, &switchdev_event_handler_rtm_newaddr, NULL) < 0) {
+            if (nl_msg_parse(msg, &switchdev_event_handle_rtm_newaddr, NULL) < 0) {
                 printf("Unknown message type.");
 			}
             break;
         case RTM_DELADDR:
-            if (nl_msg_parse(msg, &switchdev_event_handler_rtm_deladdr, NULL) < 0) {
+            if (nl_msg_parse(msg, &switchdev_event_handle_rtm_deladdr, NULL) < 0) {
                 printf("Unknown message type.");
 		    }
             break;
