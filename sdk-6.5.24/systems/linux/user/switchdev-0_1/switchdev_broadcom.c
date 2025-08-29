@@ -2892,12 +2892,24 @@ int async_obj_fib_delete_cb(struct async_object_s *obj)
     }
 
     bcm_l3_route_t_init(&route_info);
-    route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
-    route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+    if (fib->dst.protocol == AF_INET) {
+        route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
+        if (fib->dst_len == 0) {
+            route_info.l3a_ip_mask = 0;
+        } else {
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+        }
+        //printf("async_obj_fib_create_cb l3a_subnet %x l3a_ip_mask %x\n", route_info.l3a_subnet, route_info.l3a_ip_mask);
+    } else {
+        route_info.l3a_flags = BCM_L3_IP6;
+        memcpy(route_info.l3a_ip6_net, fib->dst.ip, 16);
+        ipv6_create_mask(route_info.l3a_ip6_mask, fib->dst_len);
+    } 
+ 
     rc = bcm_l3_route_delete(0, &route_info);
 
     if (BCM_FAILURE(rc)) {
-        printf("async_obj_fib_delete_cb l3_egress delete failed %d\n", rc);
+        printf("async_obj_fib_delete_cb l3_route delete failed %d\n", rc);
     } 
     return rc;
 }

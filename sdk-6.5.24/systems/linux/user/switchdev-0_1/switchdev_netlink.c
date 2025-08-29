@@ -287,7 +287,7 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
     char                 ifname[IF_NAMESIZE+1];
     uint32_t             ipv4_addr, *ipv6_addr;
     ip_address_t         host;
-    int                  prefixlen;
+    //int                  prefixlen;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -302,7 +302,7 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
     }
 
     nl_addr   = rtnl_addr_get_local(addr);
-    prefixlen = rtnl_addr_get_prefixlen(addr);
+    //prefixlen = rtnl_addr_get_prefixlen(addr);
 
     memset(&host, 0, sizeof(host));
     if (rtnl_addr_get_family(addr) == AF_INET) {
@@ -343,7 +343,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
     char                 ifname[IF_NAMESIZE+1];
     uint32_t             ipv4_addr, *ipv6_addr;
     ip_address_t         host;
-    int                  prefixlen;
+    //int                  prefixlen;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -358,7 +358,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
     }
 
     nl_addr   = rtnl_addr_get_local(addr);
-    prefixlen = rtnl_addr_get_prefixlen(addr);
+    //prefixlen = rtnl_addr_get_prefixlen(addr);
 
     memset(&host, 0, sizeof(host));
 

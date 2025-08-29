@@ -280,10 +280,6 @@ int main( int argc, char *argv[] )
     (*intf)->object_create((async_object_t *)*intf);
     (*intf)->object_download((async_object_t *)*intf);     
 
-    //Create default route for vlan 1
-    ip_default.protocol = AF_INET;
-    ip_default.ip[0]    = 0;
-
     //create vlan 1 neigh forus 
     neigh = NULL;
     neigh = async_obj_neigh_new();
@@ -301,6 +297,12 @@ int main( int argc, char *argv[] )
     (*neigh)->object_create((async_object_t *)*neigh);
     (*neigh)->object_download((async_object_t *)*neigh);         
 
+    //Create default ipv4  route for vlan 1
+    ip_default.protocol = AF_INET;
+    ip_default.ip[0]    = 0;
+    ip_default.ip[1]    = 0;
+    ip_default.ip[2]    = 0;
+    ip_default.ip[3]    = 0;
     fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
     if (!fib || !(*fib)) {
         // should not happen
@@ -308,9 +310,19 @@ int main( int argc, char *argv[] )
     }
 
     (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
-
     (*fib)->object_create((async_object_t *)*fib);
+    (*fib)->object_download((async_object_t *)*fib);
 
+    //Create default ipv6 route for vlan 1
+    ip_default.protocol = AF_INET6;
+    fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
+    if (!fib || !(*fib)) {
+        // should not happen
+        goto init_fail;
+    }
+
+    (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
+    (*fib)->object_create((async_object_t *)*fib);
     (*fib)->object_download((async_object_t *)*fib);
 
     //Create ports from port_config.ini
