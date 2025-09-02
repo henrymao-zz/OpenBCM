@@ -34,3 +34,13 @@ char *ipaddr2str(ip_address_t *ipaddr)
     return ipaddr_buf;
 }
 
+#define MACADDR_STR_LEN 64
+static __thread char macaddr_buf[MACADDR_STR_LEN];
+
+char *macaddr2str(uint8_t *mac_addr)
+{
+    sprintf(macaddr_buf, "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);   
+
+    return macaddr_buf;
+}

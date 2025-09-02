@@ -441,6 +441,54 @@ void switchdev_event_handle_rtm_newlink(struct nl_object *obj, void *arg)
     return;
 }
 
+static int ipneigh_set(async_obj_neigh_t *neigh)
+{
+    struct nl_msg    *msg = NULL;
+    struct ndmsg      ndm;
+    switch_service_t *sys = NULL;
+    int               err = 0;
+
+    sys = system_get_instance();
+    if (sys == NULL) {
+       return -1;
+    }
+
+    memset(&ndm, 0, sizeof(ndm));
+    ndm.ndm_family   = neigh->nh.protocol;
+    ndm.ndm_ifindex  = neigh->ifindex;
+    ndm.ndm_type     = RTN_UNICAST;
+    ndm.ndm_state    = NUD_DELAY;
+    ndm.ndm_flags    = NTF_USE;
+
+    msg = nlmsg_alloc_simple(RTM_NEWNEIGH,NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_REPLACE);
+    if (!msg) {
+        printf("ipneigh_set alloc msg failed \n");
+        return -1;
+    }
+
+    err = nlmsg_append(msg, &ndm, sizeof(ndm), NLMSG_ALIGNTO);
+    if (err) {
+        printf("ipneigh_set append failed %d\n", err);
+        return err;
+    }
+
+    err = nla_put_u32(msg, NDA_DST, neigh->nh.ip);
+    if (err) {
+        printf("ipneigh_set put addr failed %d addr %s\n", err, ipaddr2str(&neigh->nh));
+        return err;
+    }
+
+    err = nl_send_auto(sys->generic_sock, msg);
+    nlmsg_free(msg);
+    if (err < 0) {
+        printf("ipneigh_set send_auto ret %d\n", err);
+        return err;
+    }
+
+    return err;
+}
+
+
 static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 {
     struct ndmsg  *ndm = NLMSG_DATA(n);
@@ -471,18 +519,12 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
 
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
-
     //only handle reachable and delete 
     if (msgtype != RTM_DELNEIGH) {
         if ((ndm->ndm_state != NUD_PERMANENT) &&
             (ndm->ndm_state != NUD_REACHABLE)) {
             return (0);
         }
-    } else {
-        if (ndm->ndm_state != NUD_FAILED) {
-            return (0);
-        }
-        is_del = 1;
     }
 
     if (!tb[NDA_DST] || ndm->ndm_type != RTN_UNICAST)
@@ -502,42 +544,63 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     ip_addr.protocol = ndm->ndm_family;
     memcpy(ip_addr.ip, RTA_DATA(tb[NDA_DST]), RTA_PAYLOAD(tb[NDA_DST]));
 
-    if (!is_del && tb[NDA_LLADDR]) {
+    if (tb[NDA_LLADDR]) {
         memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
     }
 
-    //printf("handle neigh msg %d if_index %d %s, ip_addr 0x%x mac %x:%x:%x:%x:%x:%x \n",
-    //       msgtype, ndm->ndm_ifindex, ifname, ip_addr.ip[0], 
-	//       mac_addr[5], mac_addr[4],mac_addr[3], mac_addr[2],mac_addr[1],mac_addr[0]);        
+    printf("handle neigh msg %d state %d if_index %d %s, ip_addr %s mac %s\n",
+           msgtype, ndm->ndm_state, ndm->ndm_ifindex, ifname, 
+           ip_addr2str(&ip_addr), macaddr2str(mac_addr));
+
     if (msgtype != RTM_DELNEIGH) { 
         async_obj_neigh_t   **neigh = NULL;
 
-        neigh = async_obj_neigh_find_or_new(&ip_addr);
-        if (!neigh || !(*neigh)) {
-            return 0;
+        switch(ndm->ndm_state) {
+            case NUD_PERMANENT:
+            case NUD_REACHABLE:
+                neigh = async_obj_neigh_find_or_new(&ip_addr);
+                if (!neigh || !(*neigh)) {
+                    return 0;
+                }
+                memcpy((*neigh)->mac_addr, mac_addr, ETHER_ADDR_LEN);
+                (*neigh)->ifindex = ndm->ndm_ifindex;
+
+                //TODO, handle neigh MAC change case
+                //printf("   neigh %p nh 0x%x\n", *neigh, (*neigh)->nh.ip[0]);
+                (*neigh)->object_create((async_object_t *)(*neigh));
+
+                // special handling for neigh object, trigger download only if there is child
+                if (!LIST_EMPTY(&(*neigh)->child_list)) {
+                    (*neigh)->object_download((async_object_t *)*neigh);
+                }
+                break;
+
+            case NUD_STALE:
+                neigh = async_obj_neigh_find(&ip_addr);
+                if (neigh && (*neigh)) {
+                    //try to refresh neigh state
+                    ipneigh_set(*neigh);
+                }
+            default:
+                break;
         }
-        memcpy((*neigh)->mac_addr, mac_addr, ETHER_ADDR_LEN);
-        (*neigh)->ifindex = ndm->ndm_ifindex;
-
-        //printf("   neigh %p nh 0x%x\n", *neigh, (*neigh)->nh.ip[0]);
-
-        //TODO, handle neigh MAC change case
-        (*neigh)->object_create((async_object_t *)(*neigh));
-
-        // special handling for neigh object, trigger download only if there is child
-        if (!LIST_EMPTY(&(*neigh)->child_list)) {
-            (*neigh)->object_download((async_object_t *)*neigh);
-        }
-        return rc;
     } else {
         async_obj_neigh_t   **neigh = NULL;
-        //del, remove l3 egress object
-        neigh = async_obj_neigh_find(&ip_addr);
-        if(!neigh) {
-            //printf("switchdev_handle_rtm_neigh neigh not found for 0x%x\n", ipv4_addr);
-            return 0;
+
+        switch(ndm->ndm_state) {
+            case NUD_FAILED:
+                //del, remove l3 egress object
+                neigh = async_obj_neigh_find(&ip_addr);
+                if(!neigh) {
+                    return 0;
+                }
+                //printf("switchdev_handle_rtm_neigh neigh delete 0x%x\n", ipv4_addr);
+                (*neigh)->object_delete((async_object_t **)neigh);
+                break;
+
+            default:
+                break;
         }
-        (*neigh)->object_delete((async_object_t **)neigh);
     }
 
     return (rc);
@@ -683,10 +746,16 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
                ifindex, ipaddr2str(&ip_dst), rtm->rtm_dst_len, ipaddr2str(&ip_gw));        
 
         // if ip neigh does not exist, create a new obj
-        neigh = async_obj_neigh_find_or_new(&ip_gw);
+        neigh = async_obj_neigh_find(&ip_gw);
         if (!neigh || !(*neigh)) {
-            // should not happen
-            return 0;
+            neigh = async_obj_neigh_find_or_new(&ip_gw);
+            if (!neigh || !(*neigh)) {
+                // should not happen
+                return 0;
+            }
+            // neigh does not exist yet, send create request to kernel
+            (*neigh)->ifindex = ifindex;
+            ipneigh_set(*neigh);
         }
 
         // if fib does not exist, create a new fib

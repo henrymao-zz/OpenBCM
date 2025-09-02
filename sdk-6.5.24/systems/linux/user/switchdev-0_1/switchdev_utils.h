@@ -9,5 +9,6 @@ typedef struct ip_address_s {
 
 
 char *ipaddr2str(ip_address_t *ipaddr);
+char *macaddr2str(uint8_t *mac_addr);
 
 #endif

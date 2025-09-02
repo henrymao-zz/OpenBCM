@@ -680,64 +680,6 @@ async_obj_neigh_t** async_obj_neigh_find_type(int neigh_type)
     return NULL;
 }
 
-async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
-{
-    switch_service_t   *sys   = NULL;
-    async_obj_entry_t  *entry = NULL;
-    async_obj_neigh_t  *obj   = NULL;
-    async_obj_neigh_t **objp  = NULL;
-
-    if (!(sys = system_get_instance()))
-        return NULL;
-   
-    if ((objp = async_obj_neigh_find(nh)))
-        return objp;
-
-    if (!(entry = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
-    {
-        printf("neigh entry malloc failed nh 0x%x \n",  nh->ip[0]);
-        return NULL;
-    }
-
-    if (!(obj = (async_obj_neigh_t*)malloc(sizeof(async_obj_neigh_t))))
-    {
-        free(entry);
-        printf("neigh object malloc failed nh 0x%x \n",  nh->ip[0]);
-        return NULL;
-    }
-
-    //printf("async_obj_neigh_find_or_new new obj for 0x%x\n", nh->ip[0]);
-
-    memset(entry, 0, sizeof(async_obj_entry_t));
-    entry->obj = (async_object_t *)obj;
-
-    memset(obj, 0, sizeof(async_obj_neigh_t));
-    //initialize object base
-    obj->state      = ASYNC_OBJ_STATE_NEW;
-    obj->type       = ASYNC_OBJ_TYPE_NEIGH;
-    pthread_mutex_init(&obj->lock, NULL);
-    LIST_INIT(&(obj->parent_list));
-    LIST_INIT(&(obj->child_list));
-
-    obj->object_create     = async_object_create;    
-    obj->object_delete     = async_object_delete;
-    obj->object_download   = async_object_download;
-    obj->object_add_parent = async_object_add_parent;
-
-    obj->object_create_cb  = async_obj_neigh_create_cb;
-    obj->object_update_cb  = async_obj_neigh_update_cb;
-    obj->object_delete_cb  = async_obj_neigh_delete_cb;
-
-    //initialize object specific
-    obj->neigh_type = NEIGH_DYNAMIC;
-    obj->object_id  = -1;
-    memcpy(&obj->nh, nh, sizeof(ip_address_t));
-
-    LIST_INSERT_HEAD(&sys->switch_db.object_db, entry, system_next);
-
-    return (async_obj_neigh_t**)&(entry->obj);
-}
-
 
 async_obj_neigh_t** async_obj_neigh_new(void)
 {
@@ -791,6 +733,31 @@ async_obj_neigh_t** async_obj_neigh_new(void)
 
     return (async_obj_neigh_t**)&(entry->obj);
 }
+
+
+async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
+{
+    switch_service_t   *sys   = NULL;
+    async_obj_neigh_t **obj   = NULL;
+
+    if (!(sys = system_get_instance()))
+        return NULL;
+   
+    if ((obj = async_obj_neigh_find(nh)))
+        return obj;
+
+    //printf("async_obj_neigh_find_or_new new obj for 0x%x\n", nh->ip[0]);
+
+    obj = async_obj_neigh_new();
+    if(!obj || !(*obj)) {
+        return NULL;
+    }
+
+    memcpy(&((*obj)->nh), nh, sizeof(ip_address_t));
+
+    return (async_obj_neigh_t**)&(entry->obj);
+}
+
 
 
 /******************************************************************************************/
