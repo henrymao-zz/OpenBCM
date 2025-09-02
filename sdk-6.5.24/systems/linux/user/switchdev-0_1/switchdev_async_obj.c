@@ -755,7 +755,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 
     memcpy(&((*obj)->nh), nh, sizeof(ip_address_t));
 
-    return (async_obj_neigh_t**)&(entry->obj);
+    return obj;
 }
 
 

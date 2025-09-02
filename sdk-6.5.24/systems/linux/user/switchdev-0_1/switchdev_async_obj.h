@@ -316,18 +316,18 @@ typedef struct switch_object_db_s {
 }switch_object_db_t;
 
 typedef struct switch_service_s {
-    //struct  nl_sock *generic_sock;
+    struct  nl_sock *generic_sock;
     struct  nl_sock *ucsk;
     struct  nl_sock *mcsk;
     struct  nl_sock *route_event_sock;
-    //int     generic_sock_seq;
+    int     generic_sock_seq;
 
     int     ucsk_fd;
     int     mcsk_fd;
     int     route_event_fd;
     int     timer_fd;
     int     epoll_fd;   
-    //int     generic_sock_fd;
+    int     generic_sock_fd;
 
 
     //object store - in memory storage of async objects 

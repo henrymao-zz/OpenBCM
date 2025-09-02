@@ -472,7 +472,10 @@ static int ipneigh_set(async_obj_neigh_t *neigh)
         return err;
     }
 
-    err = nla_put_u32(msg, NDA_DST, neigh->nh.ip);
+    err = nla_put(msg, 
+                  NDA_DST, 
+                  (ndm.ndm_family == AF_INET)?sizeof(struct in_addr) : sizeof(struct in6_addr),
+                  neigh->nh.ip);
     if (err) {
         printf("ipneigh_set put addr failed %d addr %s\n", err, ipaddr2str(&neigh->nh));
         return err;
@@ -494,7 +497,6 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     struct ndmsg  *ndm = NLMSG_DATA(n);
     struct rtattr *tb[NDA_MAX + 1] = {0};	
     int            len = n->nlmsg_len;
-    int            is_del = 0;
     int            msgtype = n->nlmsg_type;
     uint8_t        mac_addr[ETHER_ADDR_LEN];
     ip_address_t   ip_addr;
@@ -510,22 +512,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
         return 0;
     }
 
-    //printf("handle neigh msg %d if_index %d state %d type %d\n", 
-    //       msgtype, ndm->ndm_ifindex, ndm->ndm_state, ndm->ndm_type);
-
-    /* process msg_type RTM_NEWNEIGH, RTM_GETNEIGH, RTM_DELNEIGH */
-    if (n->nlmsg_type != RTM_NEWNEIGH && n->nlmsg_type  != RTM_DELNEIGH )
-        return(0);
-
     ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
-
-    //only handle reachable and delete 
-    if (msgtype != RTM_DELNEIGH) {
-        if ((ndm->ndm_state != NUD_PERMANENT) &&
-            (ndm->ndm_state != NUD_REACHABLE)) {
-            return (0);
-        }
-    }
 
     if (!tb[NDA_DST] || ndm->ndm_type != RTN_UNICAST)
     {
@@ -548,9 +535,9 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
         memcpy(mac_addr, RTA_DATA(tb[NDA_LLADDR]), RTA_PAYLOAD(tb[NDA_LLADDR]));
     }
 
-    printf("handle neigh msg %d state %d if_index %d %s, ip_addr %s mac %s\n",
-           msgtype, ndm->ndm_state, ndm->ndm_ifindex, ifname, 
-           ip_addr2str(&ip_addr), macaddr2str(mac_addr));
+    //printf("handle neigh msg %d state %d if_index %d %s, ip_addr %s mac %s\n",
+    //       msgtype, ndm->ndm_state, ndm->ndm_ifindex, ifname, 
+    //       ipaddr2str(&ip_addr), macaddr2str(mac_addr));
 
     if (msgtype != RTM_DELNEIGH) { 
         async_obj_neigh_t   **neigh = NULL;
@@ -578,8 +565,10 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
             case NUD_STALE:
                 neigh = async_obj_neigh_find(&ip_addr);
                 if (neigh && (*neigh)) {
-                    //try to refresh neigh state
-                    ipneigh_set(*neigh);
+                    //try to refresh neigh state if neigh is active
+                    if ((*neigh)->state != ASYNC_OBJ_STATE_IDLE) { 
+                        ipneigh_set(*neigh);
+                    }
                 }
             default:
                 break;
@@ -767,9 +756,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         printf("    neigh %p state %d ip 0x%x\n",(*neigh), (*neigh)->state, (*neigh)->nh.ip[0]);
 
         (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
-
         (*fib)->object_create((async_object_t *)*fib);
-
         (*fib)->object_download((async_object_t *)*fib);
         
         return (0);
@@ -1045,7 +1032,6 @@ int switchdev_netlink_main(void)
     ev.data.fd = sys->timer_fd;
     epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->timer_fd, &ev);
 	
-#if 0
     //create netlink socket for ops
     sys->generic_sock = nl_socket_alloc();
     sys->generic_sock_seq = time(NULL);
@@ -1057,7 +1043,6 @@ int switchdev_netlink_main(void)
     }
     nl_socket_disable_seq_check(sys->generic_sock);
     sys->generic_sock_fd = nl_socket_get_fd(sys->generic_sock);
-#endif
 
     //create netlink socket for route event
     sys->route_event_sock = nl_socket_alloc();
