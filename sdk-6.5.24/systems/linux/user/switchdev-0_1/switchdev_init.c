@@ -303,7 +303,7 @@ int main( int argc, char *argv[] )
     ip_default.ip[1]    = 0;
     ip_default.ip[2]    = 0;
     ip_default.ip[3]    = 0;
-    fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
+    fib = async_obj_fib_find_or_new(&ip_default, 0);
     if (!fib || !(*fib)) {
         // should not happen
         goto init_fail;
@@ -315,7 +315,7 @@ int main( int argc, char *argv[] )
 
     //Create default ipv6 route for vlan 1
     ip_default.protocol = AF_INET6;
-    fib = async_obj_fib_find_or_new(0, &ip_default, &ip_default, 0);
+    fib = async_obj_fib_find_or_new(&ip_default, 0);
     if (!fib || !(*fib)) {
         // should not happen
         goto init_fail;

@@ -299,8 +299,8 @@ typedef struct async_obj_fib_s {
     ip_address_t  nh[ECMP_MAX_PATH];    // next hop
 }async_obj_fib_t;
 
-async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *dst, int dst_len);
-async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len);
 
 //////////////////////////////////////////////////////////
 

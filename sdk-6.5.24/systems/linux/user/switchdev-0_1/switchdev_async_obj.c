@@ -764,7 +764,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 /*     ASYNC_OBJ_TYPE_FIB                                                                 */
 /******************************************************************************************/
 
-async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *entry = NULL;
@@ -777,8 +777,7 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *dst, int dst_len
     {
         if (entry->obj && (entry->obj->type == ASYNC_OBJ_TYPE_FIB)) {
             obj = (async_obj_fib_t *)entry->obj;
-            if ((obj->ifindex == ifindex) &&
-                (memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
+            if ((memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
                 (obj->dst_len == dst_len)) {
                 return (async_obj_fib_t**)&(entry->obj);
             }
@@ -788,7 +787,7 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *dst, int dst_len
     return NULL;
 }
 
-async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *fib   = NULL;
@@ -798,26 +797,26 @@ async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *dst, int 
     if (!(sys = system_get_instance()))
         return NULL;
    
-    if ((objp = async_obj_fib_find(ifindex, nh, dst, dst_len)))
+    if ((objp = async_obj_fib_find(dst, dst_len)))
         return objp;
 
     if (!(fib = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
     {
-        printf("fib entry malloc failed ifindex %d ipv4 0x%x/%d nh 0x%x ", 
-               ifindex, dst->ip[0], dst_len, nh->ip[0]);
+        printf("fib entry malloc failed ipv4 %s/%d\n", 
+               ipaddr2str(dst), dst_len );
         return NULL;
     }
 
     if (!(obj = (async_obj_fib_t*)malloc(sizeof(async_obj_fib_t))))
     {
         free(fib);
-        printf("fib object malloc failedifindex %d ipv4 0x%x/%d nh 0x%x ", 
-               ifindex, dst->ip[0], dst_len, nh->ip[0]);
+        printf("fib object malloc failed ipv4 %s/%d\n", 
+               ipaddr2str(dst), dst_len);
         return NULL;
     }
 
-    //printf("async_obj_fib_find_or_new new obj ifindex %d ip 0x%x/%d nh 0x%x\n",
-    //       ifindex, dst->ip[0], dst_len, nh->ip[0]);
+    //printf("async_obj_fib_find_or_new new obj ip 0x%x/%d nh 0x%x\n",
+    //       dst->ip[0], dst_len, nh->ip[0]);
 
     memset(fib, 0, sizeof(async_obj_entry_t));
     fib->obj = (async_object_t *)obj;
@@ -840,7 +839,6 @@ async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *dst, int 
     obj->object_delete_cb  = async_obj_fib_delete_cb;
 
     //initialize object specific
-    obj->ifindex    = ifindex;
     obj->dst_len    = dst_len;
 
     memcpy(&obj->dst, dst, sizeof(ip_address_t));

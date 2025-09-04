@@ -297,7 +297,7 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
 
     local_if = async_obj_intf_find(ifindex);
     if(!local_if || !(*local_if)) {
-        printf("handle newaddr failed to find local if %d %s\n", ifindex, ifname);
+        printf("handle newaddr ignoring none local if %d %s\n", ifindex, ifname);
         return;
     }
 
@@ -392,7 +392,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
     ((struct rtattr*)(((char*)(r)) + NLMSG_ALIGN(sizeof(struct ndmsg))))
 #endif
 
-void ifm_parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
+void parse_rtattr(struct rtattr **tb, int max, struct rtattr *rta, int len)
 {
     while (RTA_OK(rta, len))
     {
@@ -512,7 +512,7 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
         return 0;
     }
 
-    ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
+    parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
     if (!tb[NDA_DST] || ndm->ndm_type != RTN_UNICAST)
     {
@@ -606,7 +606,7 @@ static int ipneigh_get_handler(struct nl_msg *msg, void *arg)
 
 
     //printf("ipneigh_get_handler...\n");
-    ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
+    parse_rtattr(tb, NDA_MAX, NDA_RTA(ndm), len);
 
     if (tb[NDA_LLADDR]) {
         //TODO, add support for different lladdr types
@@ -675,7 +675,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     int                msgtype = n->nlmsg_type;
     ip_address_t       ip_dst;
     ip_address_t       nh[ECMP_MAX_PATH];    
-    uint32_t           ifindex = 0;
+    uint32_t           ifindex[ECMP_MAX_PATH];
     int                nhs     = 0;
     int                is_ecmp = 0;
     char               ifname[IF_NAMESIZE+1];
@@ -689,77 +689,77 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         return 0;
     }
 
-    /* process msg_type RTM_NEWROUTE, RTM_DELROUTE */
-    if (n->nlmsg_type != RTM_NEWROUTE && n->nlmsg_type  != RTM_DELROUTE )
-        return(0);
-
-
-    ifm_parse_rtattr(tb, NDA_MAX, NDA_RTA(rtm), len);
+    parse_rtattr(tb, RTA_MAX, RTM_RTA(rtm), len);
 
     memset(&ip_dst, 0, sizeof(ip_address_t));
     ip_dst.protocol = rtm->rtm_family;
     memcpy(ip_dst.ip, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
 
-    // intf
-    if (tb[RTA_OIF]) {
-        memcpy(&ifindex, RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
-    } else {
-        printf("handle_route_request missing oif\n");
-	    return 0;
-	}
-
-    if_indextoname(ifindex, ifname);
-    intf = async_obj_intf_find(ifindex);
-
-    if (!intf || !(*intf)) {
-        printf("handle_route_request for port %d %s\n",ifindex, ifname);
-        return 0;
-    }
-
     if (rtm->rtm_scope != RT_SCOPE_UNIVERSE || rtm->rtm_type != RTN_UNICAST) {
-          printf("unhandled rtm_route msgtype %d route scope %d type %d ifindex %d dst %s/%d\n",
-                 msgtype, rtm->rtm_scope, rtm->rtm_type, ifindex, 
-                 ipaddr2str(&ip_dst), rtm->rtm_dst_len);
+          printf("unhandled rtm_route msgtype %d route scope %d type %d dst %s/%d\n",
+                 msgtype, rtm->rtm_scope, rtm->rtm_type, ipaddr2str(&ip_dst), rtm->rtm_dst_len);
           return 0;
     }
 
     // via
-    memset(&ip_gw, 0, sizeof(ip_address_t));
     if (tb[RTA_GATEWAY]) {
+        memset(&nh[nhs], 0, sizeof(ip_address_t));
         nh[nhs].protocol = rtm->rtm_family;
         memcpy(&(nh[nhs].ip), RTA_DATA(tb[RTA_GATEWAY]), RTA_PAYLOAD(tb[RTA_GATEWAY]));
         nhs++;
-    } else if (tb[RTA_MULTIPATH]) {
-        // multipath, via list
-        struct rtnexthop *nhptr = (struct rtnexthop *)RTA_DATA(tb[RTA_MULTIPATH]);
-        int  rtnhp_len = RTA_PAYLOAD(tb[RTA_MULTIPATH]);
-        int  attrlen;
 
-        if (rtnhp_len < (int)sizeof(*nhptr) ||
-            nhptr->rtnh_len > rtnhp_len ) {
-            printf("handle rtm_route, multipath msg corrupt %d type %d ifindex %d dst %s/%d\n",
-                msgtype, rtm->rtm_type, ifindex, 
-                ipaddr2str(&ip_dst), rtm->rtm_dst_len);
+        // intf
+        if (tb[RTA_OIF]) {
+            memcpy(&ifindex[0], RTA_DATA(tb[RTA_OIF]), RTA_PAYLOAD(tb[RTA_OIF]));
+        } else {
+            printf("handle_route_request missing oif\n");
+	        return 0;
+	    }
+
+        if_indextoname(ifindex[0], ifname);
+        intf = async_obj_intf_find(ifindex[0]);
+
+        if (!intf || !(*intf)) {
+            printf("handle_route_request for port %d %s\n",ifindex[0], ifname);
             return 0;
         }
+    } else if (tb[RTA_MULTIPATH]) {
+        // multipath, via list
+        struct rtnexthop *nhptr     = (struct rtnexthop *)RTA_DATA(tb[RTA_MULTIPATH]);
+        int               rtnhp_len = RTA_PAYLOAD(tb[RTA_MULTIPATH]);
+        struct rtattr    *attr[RTA_MAX + 1];
 
-        attrlen = rtnhp_len - sizeof(struct rtnexthop);
-        if (attrlen) {
-            /*Retrieve attributes */
-            struct rtattr *attr = RTNH_DATA(nhptr);
-            for (; RTA_OK(attr, attrlen); attr = RTA_NEXT(attr, attrlen)) {
-                if (attr->rta_type == RTA_GATEWAY) {
-                    /*nexthop data */
+        while(rtnhp_len >= sizeof(struct rtnexthop)) {
+            if (nhptr->rtnh_len > rtnhp_len)
+                break;
+
+            if (nhptr->rtnh_len > sizeof(*nhptr)) {
+                /*Retrieve attributes */
+                parse_rtattr(attr, RTA_MAX, RTNH_DATA(nhptr), nhptr->rtnh_len - sizeof(*nhptr));
+
+                if (attr[RTA_GATEWAY]) {
+                    memset(&nh[nhs], 0, sizeof(ip_address_t));
                     nh[nhs].protocol = rtm->rtm_family;
-                    memcpy(&(nh[nhs].ip), RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
+                    memcpy(&(nh[nhs].ip), RTA_DATA(attr[RTA_GATEWAY]), RTA_PAYLOAD(attr[RTA_GATEWAY]));
+
+                    ifindex[nhs] = nhptr->rtnh_ifindex;
+                    if_indextoname(ifindex[nhs], ifname);
+                    intf = async_obj_intf_find(ifindex[nhs]);
+
+                    if (!intf || !(*intf)) {
+                        printf("handle_route_request ecmp ignoring none local if %s[%d]\n", ifname, ifindex[nhs]);
+                        return 0;
+                    }
                     nhs++;
                 }
             }
+            rtnhp_len -= NLMSG_ALIGN(nhptr->rtnh_len);
+            nhptr = RTNH_NEXT(nhptr);
         }
         is_ecmp = true;
     } else {
         printf("handle rtm_route, missing nexthop info %d type %d ifindex %d dst %s/%d\n",
-                msgtype, rtm->rtm_type, ifindex, 
+                msgtype, rtm->rtm_type, ifindex[nhs], 
                 ipaddr2str(&ip_dst), rtm->rtm_dst_len);
         return 0;
     }
@@ -768,45 +768,47 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     if (msgtype != RTM_DELROUTE) {
         async_obj_neigh_t   **neigh = NULL;
         async_obj_fib_t     **fib   = NULL;
-        int                   i     = 0
+        int                   i     = 0;
 
-        printf("%s ipv4 route : ifindex %d  dst %s/%d ",
+        printf("%s route : dst %s/%d ",
                (msgtype == RTM_NEWROUTE)?"add":"update",
-               ifindex, ipaddr2str(&ip_dst), rtm->rtm_dst_len);    
+               ipaddr2str(&ip_dst), rtm->rtm_dst_len);    
         if (!is_ecmp) {    
-            printf("via %s\n", ipaddr2str(&nh[0]));
+            printf("via %s dev %s[%d]\n", ipaddr2str(&nh[0]), ifname, ifindex[0]);
         } else {
             for(i = 0; i <nhs; i++) {
-                printf("\n    nexthop via %s", ipaddr2str(&nh[i]));
+                if_indextoname(ifindex[i], ifname);
+                printf("\n    nexthop via %s dev %s[%d]", ipaddr2str(&nh[i]), ifname, ifindex[i]);
             }
             printf("\n");
         }
 
         // if fib does not exist, create a new fib
-        fib = async_obj_fib_find_or_new(ifindex, &ip_dst, rtm->rtm_dst_len);
+        fib = async_obj_fib_find_or_new(&ip_dst, rtm->rtm_dst_len);
         if (!fib || !(*fib)) {
             // should not happen
             return 0;
         }
-        fib->is_ecmp = is_ecmp;
-        fib->fib_nhs = nhs;
+        (*fib)->ifindex  = ifindex[0];
+        (*fib)->is_ecmp = is_ecmp;
+        (*fib)->fib_nhs = nhs;
         // todo handle update nh case
-        memcpy(&fib->nh[0], &nh[0], sizeof(ip_address_t));
+        memcpy(&(*fib)->nh[0], &nh[0], sizeof(ip_address_t));
 
         // if ip neigh does not exist, create a new obj
         for (i = 0; i < nhs; i++) {
             neigh = async_obj_neigh_find(&nh[i]);
             if (!neigh || !(*neigh)) {
-                neigh = async_obj_neigh_find_or_new(&ip_gw);
+                neigh = async_obj_neigh_find_or_new(&nh[i]);
                 if (!neigh || !(*neigh)) {
                     // should not happen
                     return 0;
                 }
                 // neigh does not exist yet, send create request to kernel
-                (*neigh)->ifindex = ifindex;
+                (*neigh)->ifindex = ifindex[i];
                 ipneigh_set(*neigh);
             }
-            printf("    neigh %p state %d ip %s\n",(*neigh), (*neigh)->state, ipaddr2str(&(*neigh)->nh));
+            //printf("    neigh %p state %d ip %s\n",(*neigh), (*neigh)->state, ipaddr2str(&(*neigh)->nh));
             (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
         }
 
@@ -816,18 +818,21 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         return (0);
     } else {
         async_obj_fib_t     **fib = NULL;
+        int                   i   = 0;
 
-        printf("del ipv4 route : ifindex %d  dst %s/%d ",
-               ifindex, ipaddr2str(&ip_dst), rtm->rtm_dst_len);
+        printf("del route : dst %s/%d ",
+               ipaddr2str(&ip_dst), rtm->rtm_dst_len);
         if (!is_ecmp) {    
-            printf("via %s\n", ipaddr2str(&nh[0]));
+            printf("via %s dev %s[%d]\n", ipaddr2str(&nh[0]), ifname, ifindex[0]);
         } else {
             for(i = 0; i <nhs; i++) {
-                printf("\n    nexthop via %s", ipaddr2str(&nh[i]));
+                if_indextoname(ifindex[i], ifname);
+                printf("\n    nexthop via %s dev %s[%d]", ipaddr2str(&nh[i]), ifname, ifindex[i]);
             }
             printf("\n");
         }
-        fib = async_obj_fib_find(ifindex, &ip_dst, rtm->rtm_dst_len);
+
+        fib = async_obj_fib_find(&ip_dst, rtm->rtm_dst_len);
 
         if (!fib) {
             return (0);

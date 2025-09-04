@@ -2869,7 +2869,7 @@ static int async_obj_create_none_ecmp(struct async_object_s *obj)
 
     return rc;
 }
-)
+
 int async_obj_fib_create_cb(struct async_object_s *obj)
 {
     async_obj_fib_t   *fib = (async_obj_fib_t *)obj;
