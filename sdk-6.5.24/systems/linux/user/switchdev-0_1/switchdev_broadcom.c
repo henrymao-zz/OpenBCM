@@ -2646,7 +2646,7 @@ int async_obj_l3host_create_cb(struct async_object_s *obj)
     host_info.l3a_intf = (*neigh)->object_id; 
 
     if (l3host->host.protocol == AF_INET) {
-        host_info.l3a_ip_addr = l3host->host.ip[0]; 
+        host_info.l3a_ip_addr = ntohl(l3host->host.ip[0]); 
     } else if  (l3host->host.protocol == AF_INET6) {
         host_info.l3a_flags =  BCM_L3_IP6;
         memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);
@@ -2693,7 +2693,7 @@ int async_obj_l3host_delete_cb(struct async_object_s *obj)
     host_info.l3a_intf = (*neigh)->object_id; 
 
     if (l3host->host.protocol == AF_INET) {
-        host_info.l3a_ip_addr = l3host->host.ip[0]; 
+        host_info.l3a_ip_addr = ntohl(l3host->host.ip[0]); 
     } else if  (l3host->host.protocol == AF_INET6) {
         host_info.l3a_flags =  BCM_L3_IP6;
         memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);

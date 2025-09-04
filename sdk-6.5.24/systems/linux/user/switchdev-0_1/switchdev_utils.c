@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include "switchdev_utils.h"
 
@@ -15,11 +16,12 @@ static __thread char ipaddr_buf[IPADDR_STR_LEN];
 char *ipaddr2str(ip_address_t *ipaddr)
 {
     uint8_t *data = (uint8_t *)ipaddr->ip;
+    uint32_t ipv4 = ntohl(ipaddr->ip[0]);
 
     if(ipaddr->protocol == AF_INET) {
         sprintf(ipaddr_buf, "%d.%d.%d.%d",
-            (ipaddr->ip[0] >> 24) & 0xff, (ipaddr->ip[0] >> 16) & 0xff,
-            (ipaddr->ip[0] >> 8) & 0xff, ipaddr->ip[0] & 0xff);
+            (ipv4 >> 24) & 0xff, (ipv4 >> 16) & 0xff,
+            (ipv4 >> 8) & 0xff, ipv4 & 0xff);
     } else {
         sprintf(ipaddr_buf, "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
             (((uint16_t)data[0] << 8) | data[1]),
