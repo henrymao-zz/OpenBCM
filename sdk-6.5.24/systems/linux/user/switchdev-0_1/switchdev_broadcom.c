@@ -2820,7 +2820,7 @@ static void ipv6_create_mask(uint8 *ip6_mask, uint32 prefix_length) {
     }
 }
 
-int async_obj_fib_create_cb(struct async_object_s *obj)
+static int async_obj_create_none_ecmp(struct async_object_s *obj)
 {
     async_obj_fib_t   *fib = (async_obj_fib_t *)obj;
     async_obj_entry_t *entry = NULL;
@@ -2842,7 +2842,7 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
     if (!neigh) {
         //should not happen
         printf("async_obj_fib_create_cb neigh parent not found %s/%d gw %s\n",
-                ipaddr2str(&fib->dst), fib->dst_len, ipaddr2str(&fib->nh));
+                ipaddr2str(&fib->dst), fib->dst_len, ipaddr2str(&fib->nh[0]));
         return -1;
     }
 
@@ -2865,6 +2865,25 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
     rc = bcm_l3_route_add(0, &route_info);
     if (BCM_FAILURE(rc)) {
         printf("async_obj_fib_create_cb l3 route create failed: %s\n", bcm_errmsg(rc));
+    }
+
+    return rc;
+}
+)
+int async_obj_fib_create_cb(struct async_object_s *obj)
+{
+    async_obj_fib_t   *fib = (async_obj_fib_t *)obj;
+    int                rc    = 0;
+
+    if (!fib) {
+        return -1;
+    }
+
+    if (!fib->is_ecmp) {
+        // none ecmp route
+        rc = async_obj_create_none_ecmp(obj);
+    } else {
+        // handle ecmp route
     }
 
     return rc;

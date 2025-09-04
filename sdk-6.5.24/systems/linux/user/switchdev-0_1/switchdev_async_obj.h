@@ -270,6 +270,7 @@ async_obj_neigh_t** async_obj_neigh_find_type(int type);
 /******************************************************************************************/
 /*     ASYNC_OBJ_TYPE_FIB                                                                 */
 /******************************************************************************************/
+#define ECMP_MAX_PATH  16
 typedef struct async_obj_fib_s {
     //base object, must be same as async_object_t
     int              state;
@@ -289,14 +290,17 @@ typedef struct async_obj_fib_s {
 	object_delete_cb_func  object_delete_cb;
     
     //fib specfic	
-    int           ifindex;      // linux ifindex
-    ip_address_t  dst;          // dst address
-    ip_address_t  nh;           // next hop
-    int           dst_len;
+    int           ifindex;              // linux ifindex
+    ip_address_t  dst;                  // dst address
+    int           dst_len;              // dst subnet prefix len
+
+    int           is_ecmp;              // ecmp route flag
+    int           fib_nhs;              // number of next hop
+    ip_address_t  nh[ECMP_MAX_PATH];    // next hop
 }async_obj_fib_t;
 
-async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
-async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *dst, int dst_len);
 
 //////////////////////////////////////////////////////////
 

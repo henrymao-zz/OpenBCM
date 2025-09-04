@@ -764,7 +764,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 /*     ASYNC_OBJ_TYPE_FIB                                                                 */
 /******************************************************************************************/
 
-async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *entry = NULL;
@@ -778,7 +778,6 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t
         if (entry->obj && (entry->obj->type == ASYNC_OBJ_TYPE_FIB)) {
             obj = (async_obj_fib_t *)entry->obj;
             if ((obj->ifindex == ifindex) &&
-                (memcmp(&obj->nh, nh, sizeof(ip_address_t)) == 0)&&
                 (memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
                 (obj->dst_len == dst_len)) {
                 return (async_obj_fib_t**)&(entry->obj);
@@ -789,7 +788,7 @@ async_obj_fib_t** async_obj_fib_find(int ifindex, ip_address_t *nh, ip_address_t
     return NULL;
 }
 
-async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *dst, int dst_len)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *fib   = NULL;
@@ -843,7 +842,7 @@ async_obj_fib_t** async_obj_fib_find_or_new(int ifindex, ip_address_t *nh, ip_ad
     //initialize object specific
     obj->ifindex    = ifindex;
     obj->dst_len    = dst_len;
-    memcpy(&obj->nh, nh, sizeof(ip_address_t));
+
     memcpy(&obj->dst, dst, sizeof(ip_address_t));
     
     LIST_INSERT_HEAD(&sys->switch_db.object_db, fib, system_next);
