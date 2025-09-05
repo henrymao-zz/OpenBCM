@@ -565,8 +565,8 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
             case NUD_STALE:
                 neigh = async_obj_neigh_find(&ip_addr);
                 if (neigh && (*neigh)) {
-                    //try to refresh neigh state if neigh is active
-                    if ((*neigh)->state != ASYNC_OBJ_STATE_IDLE) { 
+                    //try to refresh neigh state if neigh is used 
+                    if (!LIST_EMPTY(&(*neigh)->child_list)) {
                         ipneigh_set(*neigh);
                     }
                 }
@@ -695,7 +695,12 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
     ip_dst.protocol = rtm->rtm_family;
     memcpy(ip_dst.ip, RTA_DATA(tb[RTA_DST]), RTA_PAYLOAD(tb[RTA_DST]));
 
-    if (rtm->rtm_scope != RT_SCOPE_UNIVERSE || rtm->rtm_type != RTN_UNICAST) {
+    if (rtm->rtm_scope != RT_SCOPE_UNIVERSE ) {
+        //printf("unhandled rtm_route msgtype %d route scope %d type %d dst %s/%d\n",
+        //         msgtype, rtm->rtm_scope, rtm->rtm_type, ipaddr2str(&ip_dst), rtm->rtm_dst_len);
+        return 0;
+    }
+    if ((rtm->rtm_type != RTN_UNICAST && rtm->rtm_type != RTN_UNREACHABLE)) {
           printf("unhandled rtm_route msgtype %d route scope %d type %d dst %s/%d\n",
                  msgtype, rtm->rtm_scope, rtm->rtm_type, ipaddr2str(&ip_dst), rtm->rtm_dst_len);
           return 0;
@@ -757,13 +762,11 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             nhptr = RTNH_NEXT(nhptr);
         }
         is_ecmp = true;
-    } else {
-        printf("handle rtm_route, missing nexthop info %d type %d ifindex %d dst %s/%d\n",
-                msgtype, rtm->rtm_type, ifindex[nhs], 
-                ipaddr2str(&ip_dst), rtm->rtm_dst_len);
-        return 0;
     }
 
+    if (rtm->rtm_type == RTN_UNREACHABLE) {
+        msgtype = RTM_DELROUTE;
+    }
 
     if (msgtype != RTM_DELROUTE) {
         async_obj_neigh_t   **neigh = NULL;
@@ -773,6 +776,11 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         printf("%s route : dst %s/%d ",
                (msgtype == RTM_NEWROUTE)?"add":"update",
                ipaddr2str(&ip_dst), rtm->rtm_dst_len);    
+
+        if (nhs == 0) {
+            printf("missing nexthop,ignore\n");
+            return 0;
+        }
         if (!is_ecmp) {    
             printf("via %s dev %s[%d]\n", ipaddr2str(&nh[0]), ifname, ifindex[0]);
         } else {
@@ -784,7 +792,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         }
 
         // if fib does not exist, create a new fib
-        fib = async_obj_fib_find_or_new(&ip_dst, rtm->rtm_dst_len);
+        fib = async_obj_fib_find_or_new(&ip_dst, rtm->rtm_dst_len, is_ecmp);
         if (!fib || !(*fib)) {
             // should not happen
             return 0;
@@ -792,9 +800,8 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
         (*fib)->ifindex  = ifindex[0];
         (*fib)->is_ecmp = is_ecmp;
         (*fib)->fib_nhs = nhs;
-        // todo handle update nh case
-        memcpy(&(*fib)->nh[0], &nh[0], sizeof(ip_address_t));
 
+        // todo handle update nh case
         // if ip neigh does not exist, create a new obj
         for (i = 0; i < nhs; i++) {
             neigh = async_obj_neigh_find(&nh[i]);
@@ -809,6 +816,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
                 ipneigh_set(*neigh);
             }
             //printf("    neigh %p state %d ip %s\n",(*neigh), (*neigh)->state, ipaddr2str(&(*neigh)->nh));
+            memcpy(&(*fib)->nh[i], &nh[i], sizeof(ip_address_t));
             (*fib)->object_add_parent((async_object_t *)*fib, (async_object_t *)*neigh);
         }
 
@@ -822,7 +830,11 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
 
         printf("del route : dst %s/%d ",
                ipaddr2str(&ip_dst), rtm->rtm_dst_len);
-        if (!is_ecmp) {    
+        if (rtm->rtm_type == RTN_UNREACHABLE) {
+            // can happen if interface IP is removed
+            // no nexthop info
+            printf("\n");
+        } else if (!is_ecmp) {    
             printf("via %s dev %s[%d]\n", ipaddr2str(&nh[0]), ifname, ifindex[0]);
         } else {
             for(i = 0; i <nhs; i++) {
@@ -832,7 +844,7 @@ static int switchdev_handle_rtm_route(struct nlmsghdr *n)
             printf("\n");
         }
 
-        fib = async_obj_fib_find(&ip_dst, rtm->rtm_dst_len);
+        fib = async_obj_fib_find(&ip_dst, rtm->rtm_dst_len, is_ecmp);
 
         if (!fib) {
             return (0);
@@ -1172,7 +1184,7 @@ int switchdev_netlink_main(void)
     epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.route_event_fd, &ev);
 
     while (1) {
-        int nfds = epoll_wait(sys->netlink.epoll_fd, events, 10, -1);
+        int nfds = epoll_wait(sys->netlink.epoll_fd, events, 10, 100);
         for (int i = 0; i < nfds; i++) {
             if (events[i].data.fd == sys->netlink.ucsk_fd) {
                 nl_recvmsgs_default(sys->netlink.ucsk);

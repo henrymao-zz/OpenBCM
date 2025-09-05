@@ -300,8 +300,8 @@ typedef struct async_obj_fib_s {
     int           ecmp_group_id;        // ecmp group id
 }async_obj_fib_t;
 
-async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len);
-async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len);
+async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len, int is_ecmp);
+async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len, int is_ecmp);
 
 //////////////////////////////////////////////////////////
 

@@ -896,6 +896,12 @@ typedef struct bcm_l3_tunnel_priority_info_s {
                                            update. */
 } bcm_l3_tunnel_priority_info_t;
 
+/* Two level 1:1 L3 ECMP failover group load-balancing mode. */
+typedef enum bcm_l3_ecmp_failover_lb_mode_e {
+    bcmL3EcmpFailoverLbModeRegular = 0, /* Regular load-balancing mode. */
+    bcmL3EcmpFailoverLbModeRandom = 1   /* Random load-balancing mode. */
+} bcm_l3_ecmp_failover_lb_mode_t;
+
 /* L3 ECMP structure */
 typedef struct bcm_l3_egress_ecmp_s {
     uint32 flags;                       /* See BCM_L3_xxx flag definitions. */
@@ -928,6 +934,18 @@ typedef struct bcm_l3_egress_ecmp_s {
     bcm_l3_ecmp_urpf_mode_t rpf_mode;   /* Define RPF mode for the ECMP group. */
     bcm_l3_tunnel_priority_info_t tunnel_priority; /* ECMP tunnel priority. */
     uint32 rh_random_seed;              /* Random seed for the RH ECMP group. */
+    int user_profile;                   /* User defined ECMP profile. */
+    bcm_failover_t failover_id;         /* Two level 1:1 ECMP failover group
+                                           object ID created with
+                                           BCM_FAILOVER_MULTI_LEVEL_TYPE flag
+                                           set. */
+    uint32 failover_size;               /* The failover group size, indicates
+                                           the total number of sequential egress
+                                           forwarding objects that are members
+                                           of this group. */
+    bcm_if_t failover_base_egress_id;   /* Failover group member base egress
+                                           forwarding object ID. */
+    bcm_l3_ecmp_failover_lb_mode_t failover_lb_mode; /* Failover group load-balancing mode. */
 } bcm_l3_egress_ecmp_t;
 
 /* L3 ECMP member structure */

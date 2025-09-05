@@ -764,7 +764,7 @@ async_obj_neigh_t** async_obj_neigh_find_or_new(ip_address_t *nh)
 /*     ASYNC_OBJ_TYPE_FIB                                                                 */
 /******************************************************************************************/
 
-async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len, int is_ecmp)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *entry = NULL;
@@ -778,7 +778,8 @@ async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len)
         if (entry->obj && (entry->obj->type == ASYNC_OBJ_TYPE_FIB)) {
             obj = (async_obj_fib_t *)entry->obj;
             if ((memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
-                (obj->dst_len == dst_len)) {
+                (obj->dst_len == dst_len) &&
+                (obj->is_ecmp == is_ecmp)) {
                 return (async_obj_fib_t**)&(entry->obj);
             }
         }
@@ -787,7 +788,7 @@ async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len)
     return NULL;
 }
 
-async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len)
+async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len, int is_ecmp)
 {
     switch_service_t   *sys   = NULL;
     async_obj_entry_t  *fib   = NULL;
@@ -797,7 +798,7 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len)
     if (!(sys = system_get_instance()))
         return NULL;
    
-    if ((objp = async_obj_fib_find(dst, dst_len)))
+    if ((objp = async_obj_fib_find(dst, dst_len, is_ecmp)))
         return objp;
 
     if (!(fib = (async_obj_entry_t*)malloc(sizeof(async_obj_entry_t))))
@@ -840,6 +841,7 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len)
 
     //initialize object specific
     obj->dst_len    = dst_len;
+    obj->is_ecmp    = is_ecmp;
 
     memcpy(&obj->dst, dst, sizeof(ip_address_t));
     
