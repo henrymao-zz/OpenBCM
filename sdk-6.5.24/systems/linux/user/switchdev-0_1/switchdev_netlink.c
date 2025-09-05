@@ -481,7 +481,7 @@ static int ipneigh_set(async_obj_neigh_t *neigh)
         return err;
     }
 
-    err = nl_send_auto(sys->generic_sock, msg);
+    err = nl_send_auto(sys->netlink.generic_sock, msg);
     nlmsg_free(msg);
     if (err < 0) {
         printf("ipneigh_set send_auto ret %d\n", err);
@@ -1025,13 +1025,13 @@ int switchdev_netlink_main(void)
      * multicast group, and another for ops. We do this so that we don't mix
      * up responses from ops with notifications to make handling easier.
      */
-    if ((ret = conn(&sys->ucsk)) || (ret = conn(&sys->mcsk))) {
+    if ((ret = conn(&sys->netlink.ucsk)) || (ret = conn(&sys->netlink.mcsk))) {
     	prerr("failed to connect to generic netlink\n");
     	goto out;
     }
     
     /* Resolve the genl family. One family for both unicast and multicast. */
-    int fam = genl_ctrl_resolve(sys->ucsk, SWITCHDEV_GENL_NAME);
+    int fam = genl_ctrl_resolve(sys->netlink.ucsk, SWITCHDEV_GENL_NAME);
     if (fam < 0) {
     	prerr("failed to resolve generic netlink family: %s\n",
     	      strerror(-fam));
@@ -1039,13 +1039,13 @@ int switchdev_netlink_main(void)
     }
     
     /* Disable sequence checks for asynchronous multicast messages. */
-    nl_socket_disable_seq_check(sys->mcsk);
+    nl_socket_disable_seq_check(sys->netlink.mcsk);
     
     /* Disable sequence checks for unicast messages. */
-    nl_socket_disable_seq_check(sys->ucsk);
+    nl_socket_disable_seq_check(sys->netlink.ucsk);
     
     /* Resolve the multicast group. */
-    int mcgrp = genl_ctrl_resolve_grp(sys->mcsk, SWITCHDEV_GENL_NAME,
+    int mcgrp = genl_ctrl_resolve_grp(sys->netlink.mcsk, SWITCHDEV_GENL_NAME,
     				  SWITCHDEV_MC_GRP_NAME);
     if (mcgrp < 0) {
     	prerr("failed to resolve generic netlink multicast group: %s\n",
@@ -1053,135 +1053,135 @@ int switchdev_netlink_main(void)
     	goto out;
     }
     /* Join the multicast group. */
-    if ((ret = nl_socket_add_membership(sys->mcsk, mcgrp) < 0)) {
+    if ((ret = nl_socket_add_membership(sys->netlink.mcsk, mcgrp) < 0)) {
     	prerr("failed to join multicast group: %s\n", strerror(-ret));
     	goto out;
     }
     
-    if ((ret = set_cb(sys->ucsk)) || (ret = set_cb(sys->mcsk))) {
+    if ((ret = set_cb(sys->netlink.ucsk)) || (ret = set_cb(sys->netlink.mcsk))) {
     	prerr("failed to set callback: %s\n", strerror(-ret));
     	goto out;
     }
 
     // send start and listen for response
-    if ((ret = send_start_msg(sys->ucsk, fam))) {
+    if ((ret = send_start_msg(sys->netlink.ucsk, fam))) {
     	prerr("failed to send message: %s\n", strerror(-ret));
     }
     printf("listening for messages\n");
-    nl_recvmsgs_default(sys->ucsk);
+    nl_recvmsgs_default(sys->netlink.ucsk);
     
     //TimerFD 
-    sys->timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
-    timerfd_settime(sys->timer_fd, 0, &keepalive_value, NULL);
+    sys->netlink.timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    timerfd_settime(sys->netlink.timer_fd, 0, &keepalive_value, NULL);
 
-    sys->ucsk_fd = nl_socket_get_fd(sys->ucsk);
-    set_nonblocking(sys->ucsk_fd);
+    sys->netlink.ucsk_fd = nl_socket_get_fd(sys->netlink.ucsk);
+    set_nonblocking(sys->netlink.ucsk_fd);
 
-    sys->mcsk_fd = nl_socket_get_fd(sys->mcsk);
-    set_nonblocking(sys->mcsk_fd);
+    sys->netlink.mcsk_fd = nl_socket_get_fd(sys->netlink.mcsk);
+    set_nonblocking(sys->netlink.mcsk_fd);
 
-    sys->epoll_fd = epoll_create1(0);
+    sys->netlink.epoll_fd = epoll_create1(0);
 
-    if (sys->epoll_fd < 0) {
+    if (sys->netlink.epoll_fd < 0) {
         perror("epoll_create1 failed");
         goto out;
     }
 
     ev.events = EPOLLIN;
-    ev.data.fd = sys->ucsk_fd;
-    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->ucsk_fd, &ev);
+    ev.data.fd = sys->netlink.ucsk_fd;
+    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.ucsk_fd, &ev);
 
     ev.events = EPOLLIN;
-    ev.data.fd = sys->mcsk_fd;
-    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->mcsk_fd, &ev);	
+    ev.data.fd = sys->netlink.mcsk_fd;
+    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.mcsk_fd, &ev);	
 
     ev.events = EPOLLIN;
-    ev.data.fd = sys->timer_fd;
-    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->timer_fd, &ev);
+    ev.data.fd = sys->netlink.timer_fd;
+    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.timer_fd, &ev);
 	
     //create netlink socket for ops
-    sys->generic_sock = nl_socket_alloc();
-    sys->generic_sock_seq = time(NULL);
-    ret = nl_connect(sys->generic_sock, NETLINK_ROUTE);
+    sys->netlink.generic_sock = nl_socket_alloc();
+    sys->netlink.generic_sock_seq = time(NULL);
+    ret = nl_connect(sys->netlink.generic_sock, NETLINK_ROUTE);
     if (ret)
     {
         printf("Failed to connect to netlink generic_sock. ");
         goto out;
     }
-    nl_socket_disable_seq_check(sys->generic_sock);
-    sys->generic_sock_fd = nl_socket_get_fd(sys->generic_sock);
+    nl_socket_disable_seq_check(sys->netlink.generic_sock);
+    sys->netlink.generic_sock_fd = nl_socket_get_fd(sys->netlink.generic_sock);
 
     //create netlink socket for route event
-    sys->route_event_sock = nl_socket_alloc();
-    ret = nl_connect(sys->route_event_sock, NETLINK_ROUTE);
+    sys->netlink.route_event_sock = nl_socket_alloc();
+    ret = nl_connect(sys->netlink.route_event_sock, NETLINK_ROUTE);
     if (ret)
     {
         printf("Failed to connect to netlink route_event_sock. ");
 		goto out;
     }
-    nl_socket_disable_seq_check(sys->route_event_sock);
-    sys->route_event_fd = nl_socket_get_fd(sys->route_event_sock);
-    set_nonblocking(sys->route_event_fd);
+    nl_socket_disable_seq_check(sys->netlink.route_event_sock);
+    sys->netlink.route_event_fd = nl_socket_get_fd(sys->netlink.route_event_sock);
+    set_nonblocking(sys->netlink.route_event_fd);
 
-    nl_socket_modify_cb(sys->route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
+    nl_socket_modify_cb(sys->netlink.route_event_sock, NL_CB_VALID, NL_CB_CUSTOM,
                         switchdev_route_event_handler, NULL);
 
-    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_NEIGH);
+    ret = nl_socket_add_membership(sys->netlink.route_event_sock, RTNLGRP_NEIGH);
     if (ret < 0)
     {
         printf("Failed to add netlink neigh membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_LINK);
+    ret = nl_socket_add_membership(sys->netlink.route_event_sock, RTNLGRP_LINK);
     if (ret < 0)
     {
         printf("Failed to add netlink neigh membership.");
         goto out;
     }
  
-    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV4_IFADDR);
+    ret = nl_socket_add_membership(sys->netlink.route_event_sock, RTNLGRP_IPV4_IFADDR);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv4 if addr membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV6_IFADDR);
+    ret = nl_socket_add_membership(sys->netlink.route_event_sock, RTNLGRP_IPV6_IFADDR);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv6 ifaddr membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV4_ROUTE);
+    ret = nl_socket_add_membership(sys->netlink.route_event_sock, RTNLGRP_IPV4_ROUTE);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv4 route membership.");
         goto out;
     }
 
-    ret = nl_socket_add_membership(sys->route_event_sock, RTNLGRP_IPV6_ROUTE);
+    ret = nl_socket_add_membership(sys->netlink.route_event_sock, RTNLGRP_IPV6_ROUTE);
     if (ret < 0)
     {
         printf("Failed to add netlink ipv6 route membership.");
         goto out;
     }    
     ev.events = EPOLLIN;
-    ev.data.fd = sys->route_event_fd;
-    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->route_event_fd, &ev);
+    ev.data.fd = sys->netlink.route_event_fd;
+    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.route_event_fd, &ev);
 
     while (1) {
-        int nfds = epoll_wait(sys->epoll_fd, events, 10, -1);
+        int nfds = epoll_wait(sys->netlink.epoll_fd, events, 10, -1);
         for (int i = 0; i < nfds; i++) {
-            if (events[i].data.fd == sys->ucsk_fd) {
-                nl_recvmsgs_default(sys->ucsk);
-            } else if (events[i].data.fd == sys->mcsk_fd) {
-                nl_recvmsgs_default(sys->mcsk);
-            } else if (events[i].data.fd == sys->timer_fd) {
+            if (events[i].data.fd == sys->netlink.ucsk_fd) {
+                nl_recvmsgs_default(sys->netlink.ucsk);
+            } else if (events[i].data.fd == sys->netlink.mcsk_fd) {
+                nl_recvmsgs_default(sys->netlink.mcsk);
+            } else if (events[i].data.fd == sys->netlink.timer_fd) {
                 //send_keepalive_msg(sys->ucsk, fam);
-            } else if (events[i].data.fd == sys->route_event_fd) {
-                nl_recvmsgs_default(sys->route_event_sock);
+            } else if (events[i].data.fd == sys->netlink.route_event_fd) {
+                nl_recvmsgs_default(sys->netlink.route_event_sock);
             } else {
                prerr("unknown event %d\n", events[i].data.fd);
             }
@@ -1190,9 +1190,9 @@ int switchdev_netlink_main(void)
 
     ret = 0;
 out:
-    disconn(sys->ucsk);
-    disconn(sys->mcsk);
-    disconn(sys->route_event_sock);
+    disconn(sys->netlink.ucsk);
+    disconn(sys->netlink.mcsk);
+    disconn(sys->netlink.route_event_sock);
     return ret;
 }
 

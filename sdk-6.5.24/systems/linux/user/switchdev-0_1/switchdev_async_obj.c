@@ -120,8 +120,8 @@ static void async_object_find_and_free(async_object_t *obj)
 
 int async_object_delete(async_object_t **obj)
 {
-    async_obj_entry_t *entry = NULL;
-    switch_service_t  *sys = NULL;
+    async_queue_entry_t *work = NULL;
+    switch_service_t    *sys  = NULL;
 
     //put obj into download list, which will be used by obj download thread
 
@@ -139,29 +139,29 @@ int async_object_delete(async_object_t **obj)
         case ASYNC_OBJ_STATE_IDLE:
         case ASYNC_OBJ_STATE_PENDING:
         case ASYNC_OBJ_STATE_FAILED:
-            //should not exist in work queue (sys->object_list)
+            //should not exist in work queue (sys->asyncq.object_queue)
             async_object_free(obj);
             break;
 
         case ASYNC_OBJ_STATE_ACTIVE:
             (*obj)->state = ASYNC_OBJ_STATE_DELETING;
-            //add to work queue (sys->object_list)
-            entry = (async_obj_entry_t *)malloc(sizeof(async_obj_entry_t));
-            if (!entry) {
-                //printf("async_object_download malloc failed\n");
+            //add to work queue (sys->asyncq.object_queue)
+            work = (async_queue_entry_t *)malloc(sizeof(async_queue_entry_t));
+            if (!work) {
+                //printf("async_object_delete malloc failed\n");
                 break;
             }
 
-            entry->obj = *obj;
+            work->obj = *obj;
 
-            pthread_mutex_lock(&(sys->object_lock));
-            LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
-            pthread_mutex_unlock(&(sys->object_lock));
+            pthread_mutex_lock(&(sys->asyncq.object_lock));
+            TAILQ_INSERT_TAIL(&(sys->asyncq.object_queue), work, _links);
+            pthread_mutex_unlock(&(sys->asyncq.object_lock));
 
-            pthread_cond_signal(&sys->object_cond);
+            pthread_cond_signal(&sys->asyncq.object_cond);
             break;
         case ASYNC_OBJ_STATE_DELETING:
-            //should already inserted into work queue (sys->object_list)
+            //should already inserted into work queue (sys->object_queue)
             break;
         default:
             break;
@@ -174,9 +174,9 @@ int async_object_delete(async_object_t **obj)
 
 int async_object_download(async_object_t *obj)
 {
-    async_obj_entry_t *entry  = NULL;
-    async_obj_entry_t *parent = NULL;
-    switch_service_t  *sys    = NULL;
+    async_queue_entry_t *work   = NULL;
+    async_obj_entry_t   *parent = NULL;
+    switch_service_t    *sys    = NULL;
 
     //put obj into download list, which will be used by obj download thread
 
@@ -210,13 +210,13 @@ int async_object_download(async_object_t *obj)
 
     }
 
-    entry = (async_obj_entry_t *)malloc(sizeof(async_obj_entry_t));
-    if (!entry) {
+    work = (async_queue_entry_t *)malloc(sizeof(async_queue_entry_t));
+    if (!work) {
         //printf("async_object_download malloc failed\n");
         return -1;
     }
 
-    entry->obj = obj;
+    work->obj = obj;
 
     //printf("async_object_download obj %p \n", obj);
 
@@ -234,11 +234,11 @@ int async_object_download(async_object_t *obj)
         }
     }
 
-    pthread_mutex_lock(&(sys->object_lock));
-    LIST_INSERT_HEAD(&(sys->object_list), entry, system_next);
-    pthread_mutex_unlock(&(sys->object_lock));
+    pthread_mutex_lock(&(sys->asyncq.object_lock));
+    TAILQ_INSERT_TAIL(&(sys->asyncq.object_queue), work, _links);
+    pthread_mutex_unlock(&(sys->asyncq.object_lock));
 
-    pthread_cond_signal(&sys->object_cond);
+    pthread_cond_signal(&sys->asyncq.object_cond);
     return 0;
 }
 
@@ -853,14 +853,14 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //TASK handling object download
-int process_async_object(async_obj_entry_t *entry) 
+int process_async_object(async_queue_entry_t *work) 
 {
     async_object_t     *obj    = NULL;
     async_obj_entry_t  *parent = NULL, *child = NULL;
     switch_service_t   *sys    = NULL;
     int                 rc     = 0;
 
-    obj = entry->obj;
+    obj = work->obj;
 
     if(!obj) {
         return -1;
@@ -879,8 +879,8 @@ int process_async_object(async_obj_entry_t *entry)
         case ASYNC_OBJ_STATE_FAILED:
         case ASYNC_OBJ_STATE_ACTIVE:
             //need to remove from work queue
-            entry->obj = NULL;
-            free(entry);
+            work->obj = NULL;
+            free(work);
             break;
 
         case ASYNC_OBJ_STATE_PENDING:  
@@ -893,8 +893,8 @@ int process_async_object(async_obj_entry_t *entry)
                 if(parent->obj->state != ASYNC_OBJ_STATE_ACTIVE) {
                     //printf("process_async_object parent %p state %d\n", parent->obj, parent->obj->state);
                     //remove from workqueue, will be add back to workqueue if child download success 
-                    entry->obj = NULL;
-                    free(entry);
+                    work->obj = NULL;
+                    free(work);
                     return -1;              
                 }
             }
@@ -921,16 +921,16 @@ int process_async_object(async_obj_entry_t *entry)
             }
 
             //free workqueue item
-            entry->obj = NULL;
-            free(entry);
+            work->obj = NULL;
+            free(work);
             break;
         case ASYNC_OBJ_STATE_DELETING:
             // check childs, make sure child is empty
             if (!LIST_EMPTY(&obj->child_list)) {
                 //remove from workqueue, will be add back if parent delete success
                 //printf("process_async_object %p child not NULL, skip\n", obj);
-                entry->obj = NULL;
-                free(entry);
+                work->obj = NULL;
+                free(work);
                 return -1;              
             }
                  
@@ -970,8 +970,8 @@ int process_async_object(async_obj_entry_t *entry)
             async_object_find_and_free(obj);
 
             //remove workqueue item
-            entry->obj = NULL;
-            free(entry);
+            work->obj = NULL;
+            free(work);
 
             break;
             
@@ -984,33 +984,33 @@ int process_async_object(async_obj_entry_t *entry)
 
 int switchdev_async_obj_main(switch_service_t *sys)
 {
-    async_obj_entry_t *entry = NULL;
-    async_object_t    *obj   = NULL;
+    async_queue_entry_t *work  = NULL;
+    async_object_t      *obj   = NULL;
 
     if (!sys) {
         return 0;
     } 
 
     while(1) {
-        pthread_mutex_lock(&sys->object_lock);
-        while (LIST_EMPTY(&sys->object_list)) {
-            pthread_cond_wait(&sys->object_cond, &sys->object_lock);
+        pthread_mutex_lock(&sys->asyncq.object_lock);
+        while (TAILQ_EMPTY(&sys->asyncq.object_queue)) {
+            pthread_cond_wait(&sys->asyncq.object_cond, &sys->asyncq.object_lock);
         }
 
-        entry = LIST_FIRST(&sys->object_list);
+        work = TAILQ_FIRST(&sys->asyncq.object_queue);
 
-        LIST_REMOVE(entry, system_next);
+        TAILQ_REMOVE(&sys->asyncq.object_queue, work, _links);
 
-        pthread_mutex_unlock(&sys->object_lock);
+        pthread_mutex_unlock(&sys->asyncq.object_lock);
 
-        obj = entry->obj;
+        obj = work->obj;
 
         if(!obj) {
-            free(entry);
+            free(work);
             continue;
         }
 
-        process_async_object(entry);
+        process_async_object(work);
     }
 
     return 0;

@@ -2874,7 +2874,6 @@ static int async_obj_create_none_ecmp(struct async_object_s *obj)
 static int async_obj_create_ecmp(struct async_object_s *obj)
 {
     async_obj_fib_t    *fib = (async_obj_fib_t *)obj;
-    async_obj_entry_t  *entry = NULL;
     async_obj_neigh_t **neigh = NULL;
     bcm_l3_route_t      route_info;
     bcm_if_t            ecmp_group[ECMP_MAX_PATH];
@@ -2892,6 +2891,7 @@ static int async_obj_create_ecmp(struct async_object_s *obj)
         if(neigh && *neigh) {
             if ((*neigh)->object_id) {
                 ecmp_group[i] = (*neigh)->object_id;
+                printf("async_obj_create_ecmp %s ecmp_group[%d] = %d\n", ipaddr2str(&fib->nh[i]), i, ecmp_group[i]);
             }
         }
     }

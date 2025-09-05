@@ -320,7 +320,19 @@ typedef struct switch_object_db_s {
     LIST_HEAD(async_obj_db_t, async_obj_entry_s)  object_db;
 }switch_object_db_t;
 
-typedef struct switch_service_s {
+typedef struct  async_queue_entry_s {
+    TAILQ_ENTRY(async_queue_entry_s) _links;
+
+    struct async_object_s  *obj; 
+}async_queue_entry_t;
+
+typedef struct async_workqueue_s {
+    TAILQ_HEAD(obj_q_t, async_queue_entry_s)      object_queue;
+	pthread_mutex_t                               object_lock;
+	pthread_cond_t                                object_cond;
+} async_workqueue_t;
+
+typedef struct switch_netlink_s {
     struct  nl_sock *generic_sock;
     struct  nl_sock *ucsk;
     struct  nl_sock *mcsk;
@@ -333,15 +345,17 @@ typedef struct switch_service_s {
     int     timer_fd;
     int     epoll_fd;   
     int     generic_sock_fd;
+}switch_netlink_t;
 
+typedef struct switch_service_s {
+    // netlink 
+    switch_netlink_t                              netlink;
 
     //object store - in memory storage of async objects 
     switch_object_db_t                            switch_db;
 
     //object work queue for object download
-    LIST_HEAD(obj_list_t, async_obj_entry_s)      object_list;
-	pthread_mutex_t                               object_lock;
-	pthread_cond_t                                object_cond;
+    async_workqueue_t                             asyncq;
 
 }switch_service_t;
 

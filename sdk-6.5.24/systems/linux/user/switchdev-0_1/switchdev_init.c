@@ -107,9 +107,9 @@ static void switchdev_system_init(switch_service_t* sys)
     LIST_INIT(&(sys->switch_db.lif_list));
     LIST_INIT(&(sys->switch_db.object_db));
 
-    LIST_INIT(&(sys->object_list));
-    pthread_mutex_init(&sys->object_lock, NULL);
-    pthread_cond_init(&sys->object_cond, NULL);
+    TAILQ_INIT(&(sys->asyncq.object_queue));
+    pthread_mutex_init(&sys->asyncq.object_lock, NULL);
+    pthread_cond_init(&sys->asyncq.object_cond, NULL);
 
     return;
 }
