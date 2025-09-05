@@ -2870,6 +2870,70 @@ static int async_obj_create_none_ecmp(struct async_object_s *obj)
     return rc;
 }
 
+
+static int async_obj_create_ecmp(struct async_object_s *obj)
+{
+    async_obj_fib_t    *fib = (async_obj_fib_t *)obj;
+    async_obj_entry_t  *entry = NULL;
+    async_obj_neigh_t **neigh = NULL;
+    bcm_l3_route_t      route_info;
+    bcm_if_t            ecmp_group[ECMP_MAX_PATH];
+    int                 num_ecmp, ecmp_group_id;
+    int                 rc    = 0;
+    int                 i;
+
+    if (!fib) {
+        return -1;
+    }
+
+    //create ecmp group
+    for(i = 0; i< fib->fib_nhs; i++) {
+        neigh = async_obj_neigh_find(&fib->nh[i]);
+        if(neigh && *neigh) {
+            if ((*neigh)->object_id) {
+                ecmp_group[i] = (*neigh)->object_id;
+            }
+        }
+    }
+    num_ecmp = i;
+
+    if (!num_ecmp) {
+        printf("async_obj_create_ecmp no active neigh for %s\%d\n",ipaddr2str(&fib->dst), fib->dst_len);
+        return 0;
+    }
+
+    rc = bcm_l3_egress_multipath_create(0, 0, num_ecmp, ecmp_group, &ecmp_group_id);
+    if (BCM_FAILURE(rc)) {
+        printf("Error executing bcm_l3_egress_multipath_create(): %s.\n", bcm_errmsg(rc));
+        return rc;
+    }
+
+    fib->ecmp_group_id = ecmp_group_id;
+
+    bcm_l3_route_t_init(&route_info);
+
+    if (fib->dst.protocol == AF_INET) {
+        route_info.l3a_subnet  = ntohl(fib->dst.ip[0]);
+        if (fib->dst_len == 0) {
+            route_info.l3a_ip_mask = 0;
+        } else {
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - fib->dst_len)) & 0xFFFFFFFF;
+        }
+        //printf("async_obj_fib_create_cb l3a_subnet %x l3a_ip_mask %x\n", route_info.l3a_subnet, route_info.l3a_ip_mask);
+    } else {
+        route_info.l3a_flags = BCM_L3_IP6;
+        memcpy(route_info.l3a_ip6_net, fib->dst.ip, 16);
+        ipv6_create_mask(route_info.l3a_ip6_mask, fib->dst_len);
+    } 
+    route_info.l3a_intf = ecmp_group_id;
+    rc = bcm_l3_route_add(0, &route_info);
+    if (BCM_FAILURE(rc)) {
+        printf("async_obj_create_ecmp l3 route create failed: %s\n", bcm_errmsg(rc));
+    }
+
+    return rc;
+}
+
 int async_obj_fib_create_cb(struct async_object_s *obj)
 {
     async_obj_fib_t   *fib = (async_obj_fib_t *)obj;
@@ -2884,6 +2948,7 @@ int async_obj_fib_create_cb(struct async_object_s *obj)
         rc = async_obj_create_none_ecmp(obj);
     } else {
         // handle ecmp route
+        rc = async_obj_create_ecmp(obj);
     }
 
     return rc;

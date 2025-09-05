@@ -297,6 +297,7 @@ typedef struct async_obj_fib_s {
     int           is_ecmp;              // ecmp route flag
     int           fib_nhs;              // number of next hop
     ip_address_t  nh[ECMP_MAX_PATH];    // next hop
+    int           ecmp_group_id;        // ecmp group id
 }async_obj_fib_t;
 
 async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len);
