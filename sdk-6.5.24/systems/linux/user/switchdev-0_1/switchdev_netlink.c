@@ -287,7 +287,7 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
     char                 ifname[IF_NAMESIZE+1];
     uint32_t             ipv4_addr, *ipv6_addr;
     ip_address_t         host;
-    //int                  prefixlen;
+    int                  prefixlen;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -302,7 +302,7 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
     }
 
     nl_addr   = rtnl_addr_get_local(addr);
-    //prefixlen = rtnl_addr_get_prefixlen(addr);
+    prefixlen = rtnl_addr_get_prefixlen(addr);
 
     memset(&host, 0, sizeof(host));
     if (rtnl_addr_get_family(addr) == AF_INET) {
@@ -314,8 +314,8 @@ void switchdev_event_handle_rtm_newaddr(struct nl_object *obj, void *arg)
         host.protocol = AF_INET6;        
         memcpy(host.ip, ipv6_addr, 16);
     }
-    //printf("handle_rtm_newaddr l3 host add: index %d %s address %s/%d\n",
-    //       ifindex, ifname, ipaddr2str(&host), prefixlen); 
+    printf("handle_rtm_newaddr l3 host add: index %d %s address %s/%d\n",
+           ifindex, ifname, ipaddr2str(&host), prefixlen); 
 
     l3host = async_obj_l3host_find_or_new(&host);
 
@@ -343,7 +343,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
     char                 ifname[IF_NAMESIZE+1];
     uint32_t             ipv4_addr, *ipv6_addr;
     ip_address_t         host;
-    //int                  prefixlen;
+    int                  prefixlen;
 
 
     addr = (struct rtnl_addr *)obj;
@@ -358,7 +358,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
     }
 
     nl_addr   = rtnl_addr_get_local(addr);
-    //prefixlen = rtnl_addr_get_prefixlen(addr);
+    prefixlen = rtnl_addr_get_prefixlen(addr);
 
     memset(&host, 0, sizeof(host));
 
@@ -371,8 +371,8 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
         host.protocol = AF_INET6;        
         memcpy(host.ip, ipv6_addr, 16);
     }
-    //printf("handle_rtm_deladdr l3 host del: index %d %s address %s/%d\n",
-    //       ifindex, ifname, ipaddr2str(&host), prefixlen); 
+    printf("handle_rtm_deladdr l3 host del: index %d %s address %s/%d\n",
+           ifindex, ifname, ipaddr2str(&host), prefixlen); 
 
     l3host = async_obj_l3host_find(&host);
 
@@ -380,7 +380,6 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
         printf("handle_rtm_deladdr l3host find failed\n");
         return;
     }
-    (*l3host)->lookup_class = 1;
 
     (*l3host)->object_delete((async_object_t **)l3host);
 
@@ -576,20 +575,13 @@ static int switchdev_handle_rtm_neigh(struct nlmsghdr *n)
     } else {
         async_obj_neigh_t   **neigh = NULL;
 
-        switch(ndm->ndm_state) {
-            case NUD_FAILED:
-                //del, remove l3 egress object
-                neigh = async_obj_neigh_find(&ip_addr);
-                if(!neigh) {
-                    return 0;
-                }
-                //printf("switchdev_handle_rtm_neigh neigh delete 0x%x\n", ipv4_addr);
-                (*neigh)->object_delete((async_object_t **)neigh);
-                break;
-
-            default:
-                break;
+        //del, remove l3 egress object
+        neigh = async_obj_neigh_find(&ip_addr);
+        if(!neigh) {
+            return 0;
         }
+        //printf("switchdev_handle_rtm_neigh neigh delete 0x%x\n", ipv4_addr);
+        (*neigh)->object_delete((async_object_t **)neigh);
     }
 
     return (rc);

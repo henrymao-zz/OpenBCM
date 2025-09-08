@@ -304,20 +304,33 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len, int 
 async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len, int is_ecmp);
 
 //////////////////////////////////////////////////////////
+typedef LIST_HEAD(async_obj_list_s, async_obj_entry_s) async_obj_list_t;
 
 typedef struct switch_object_db_s {
      //list of switch objects
-    LIST_HEAD(switch_list_t, async_obj_entry_s)   switch_list;
+    async_obj_list_t       switch_list;
+    pthread_rwlock_t       switch_rwlock;
 
     // list of vlan objects
-    LIST_HEAD(vlan_list_t, async_obj_entry_s)     vlan_list;
+    async_obj_list_t       vlan_list;
+    pthread_rwlock_t       vlan_rwlock;
 
-    //list of interfaces objects
-    LIST_HEAD(lif_list_t, async_obj_entry_s)      lif_list;
+    // list of interfaces objects
+    async_obj_list_t       lif_list;
+    pthread_rwlock_t       lif_rwlock;
 
-    //object store - in memory storage of async objects 
-    // TODO need to be more efficient
-    LIST_HEAD(async_obj_db_t, async_obj_entry_s)  object_db;
+    // list of l3host objects
+    async_obj_list_t       l3host_list;
+    pthread_rwlock_t       l3host_rwlock;
+
+    // list of neigh objects
+    async_obj_list_t       neigh_list;
+    pthread_rwlock_t       neigh_rwlock;
+
+    // list of fib objects
+    async_obj_list_t       fib_list;
+    pthread_rwlock_t       fib_rwlock;
+
 }switch_object_db_t;
 
 typedef struct  async_queue_entry_s {

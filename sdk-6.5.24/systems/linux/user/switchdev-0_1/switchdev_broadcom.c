@@ -2652,7 +2652,7 @@ int async_obj_l3host_create_cb(struct async_object_s *obj)
         memcpy(host_info.l3a_ip6_addr, l3host->host.ip, 16);
     }
 
-    //printf("async_obj_l3host_create_cb %s\n", ipaddr2str(&l3host->host));
+    printf("async_obj_l3host_create_cb %s\n", ipaddr2str(&l3host->host));
 
     rc = bcm_l3_host_add(0, &host_info);
 

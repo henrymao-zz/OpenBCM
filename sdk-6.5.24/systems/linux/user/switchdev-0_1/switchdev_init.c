@@ -103,9 +103,22 @@ static void switchdev_system_init(switch_service_t* sys)
     memset(sys, 0, sizeof(switch_service_t));
 
     LIST_INIT(&(sys->switch_db.switch_list));
+    pthread_rwlock_init(&(sys->switch_db.switch_rwlock), NULL);
+
     LIST_INIT(&(sys->switch_db.vlan_list));
+    pthread_rwlock_init(&(sys->switch_db.vlan_rwlock), NULL);
+
     LIST_INIT(&(sys->switch_db.lif_list));
-    LIST_INIT(&(sys->switch_db.object_db));
+    pthread_rwlock_init(&(sys->switch_db.lif_rwlock), NULL);
+
+    LIST_INIT(&(sys->switch_db.l3host_list));
+    pthread_rwlock_init(&(sys->switch_db.l3host_rwlock), NULL);
+
+    LIST_INIT(&(sys->switch_db.neigh_list));
+    pthread_rwlock_init(&(sys->switch_db.neigh_rwlock), NULL);
+
+    LIST_INIT(&(sys->switch_db.fib_list));
+    pthread_rwlock_init(&(sys->switch_db.fib_rwlock), NULL);
 
     TAILQ_INIT(&(sys->asyncq.object_queue));
     pthread_mutex_init(&sys->asyncq.object_lock, NULL);
@@ -156,9 +169,9 @@ void system_finalize()
     }
 
     /* Release all objects */
-    while (!LIST_EMPTY(&(sys->switch_db.object_db)))
+    while (!LIST_EMPTY(&(sys->switch_db.vlan_list)))
     {
-        entry = LIST_FIRST(&(sys->switch_db.object_db));
+        entry = LIST_FIRST(&(sys->switch_db.vlan_list));
         LIST_REMOVE(entry, system_next);
         if (entry->obj) {
             free(entry->obj);
