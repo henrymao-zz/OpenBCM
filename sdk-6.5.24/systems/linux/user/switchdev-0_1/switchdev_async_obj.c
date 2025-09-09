@@ -67,27 +67,6 @@ int async_object_create(async_object_t *obj)
 }
 
 
-// object has been removed from list
-static void async_object_free(async_object_t **obj)
-{
-    async_obj_entry_t      *entry = NULL;
-
-    if (obj == NULL)
-        return;
-
-    entry = container_of(obj, struct async_obj_entry_s, obj);
-    entry->obj = NULL;
-
-    if (!(*obj)) {
-        free(*obj);
-    }
-    free(entry);
-
-    return;
-
-}
-
-
 pthread_rwlock_t* async_obj_list_rwlock(async_object_t *obj)
 {
     switch_service_t   *sys   = NULL;
@@ -179,46 +158,18 @@ async_object_t** async_object_find(async_object_t *obj)
     return NULL;
 }
 
-static async_object_t **async_object_find_and_remove(async_object_t *obj)
-{
-     async_object_t     **objp = NULL;
-     switch_service_t    *sys  = NULL;
-     pthread_rwlock_t    *lock = NULL;
-     async_obj_entry_t   *entry = NULL;
 
-    if (!(sys = system_get_instance()))
-        return NULL;
- 
-     objp = async_object_find(obj);
-
-     if(objp) {
-         lock = async_obj_list_rwlock(obj); 
-         if (!lock) {
-             printf("async_object_find_and_remove failed to get rwlock\n");
-             return NULL;
-         }
-         
-         pthread_rwlock_wrlock(lock); 
-
-         entry = container_of(objp, struct async_obj_entry_s, obj);
-         LIST_REMOVE(entry, system_next);
-         entry->obj = NULL;
-
-         pthread_rwlock_unlock(lock);
-     }
-     return objp;
-}
 
 static void async_object_remove_and_free(async_object_t **obj)
 {
-     switch_service_t    *sys  = NULL;
-     pthread_rwlock_t    *lock = NULL;
-     async_obj_entry_t   *entry = NULL;
+    switch_service_t    *sys  = NULL;
+    pthread_rwlock_t    *lock = NULL;
+    async_obj_entry_t   *entry = NULL;
 
-     if (!(sys = system_get_instance()))
+    if (!(sys = system_get_instance()))
         return;
 
-     if(obj) {
+    if(obj) {
          lock = async_obj_list_rwlock(*obj); 
          if (!lock) {
              printf("async_object_remove_and_free failed to get rwlock\n");
@@ -230,17 +181,23 @@ static void async_object_remove_and_free(async_object_t **obj)
          LIST_REMOVE(entry, system_next);
          entry->obj = NULL;
 
+
          pthread_rwlock_unlock(lock);
 
-         async_object_free(obj);
-     }
-     return;
+        free(entry);
+        free(*obj);
+        
+
+    }
+    return;
 }
 
 int async_object_delete(async_object_t **obj)
 {
-    async_queue_entry_t *work = NULL;
-    switch_service_t    *sys  = NULL;
+    async_queue_entry_t *work  = NULL;
+    switch_service_t    *sys   = NULL;
+    pthread_rwlock_t    *lock  = NULL;
+    async_obj_entry_t   *entry = NULL;
 
     //put obj into download list, which will be used by obj download thread
 
@@ -263,6 +220,20 @@ int async_object_delete(async_object_t **obj)
             break;
 
         case ASYNC_OBJ_STATE_ACTIVE:
+            //remove from object list
+            lock = async_obj_list_rwlock(obj); 
+            if (!lock) {
+                printf("async_object_delete failed to get rwlock\n");
+                break;
+            }
+            entry = container_of(obj, struct async_obj_entry_s, obj);
+
+            pthread_rwlock_wrlock(lock); 
+            LIST_REMOVE(entry, system_next);
+            entry->obj = NULL;
+            free(entry);
+            pthread_rwlock_unlock(lock);
+
             (*obj)->state = ASYNC_OBJ_STATE_DELETING;
             //add to work queue (sys->asyncq.object_queue)
             work = (async_queue_entry_t *)malloc(sizeof(async_queue_entry_t));
@@ -1014,7 +985,6 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len, int 
 int process_async_object(async_queue_entry_t *work) 
 {
     async_object_t     *obj    = NULL;
-    async_object_t    **objp   = NULL;
     async_obj_entry_t  *parent = NULL, *child = NULL;
     switch_service_t   *sys    = NULL;
     int                 rc     = 0;
@@ -1092,9 +1062,6 @@ int process_async_object(async_queue_entry_t *work)
                 free(work);
                 return -1;              
             }
-
-            // remove obj from db
-            objp = async_object_find_and_remove(obj);
                  
             obj->object_delete_cb(obj);
 
@@ -1127,13 +1094,11 @@ int process_async_object(async_queue_entry_t *work)
                 }
             }
 
-            //delete is always successful
-            //remove from object db
-            async_object_free(objp);
-
+            
             //remove workqueue item
             work->obj = NULL;
             free(work);
+            free(obj);
 
             break;
             
