@@ -32,11 +32,9 @@
 #include <linux/if_bridge.h>
 
 #include "switchdev_utils.h"
-#include "switchdev_netlink.h"
 #include "switchdev_async_obj.h"
+#include "switchdev_netlink.h"
 
-
-#define prerr(...) fprintf(stderr, "error: " __VA_ARGS__)
 
 
 #if 0
@@ -257,7 +255,7 @@ static int handle_switchdev_port_event(struct nl_msg *msg)
 	err = nla_parse(tb, SWITCHDEV_A_PORT_MAX, genlmsg_attrdata(genlhdr, 0),
 			genlmsg_attrlen(genlhdr, 0), NULL);
 	if (err) {
-		prerr("unable to parse message: %s\n", strerror(-err));
+		printf("unable to parse message: %s\n", strerror(-err));
 		return NL_SKIP;
 	}
 
@@ -380,6 +378,7 @@ void switchdev_event_handle_rtm_deladdr(struct nl_object *obj, void *arg)
         printf("handle_rtm_deladdr l3host find failed\n");
         return;
     }
+    printf("handle_rtm_deladdr l3host found\n");
 
     (*l3host)->object_delete((async_object_t **)l3host);
 
@@ -1012,16 +1011,15 @@ static void set_nonblocking(int fd)
 }
 
 
-#define EPOLL_MAX_EVENTS 10
-int switchdev_netlink_main(void)
+int switchdev_netlink_init(void)
 {
-    struct epoll_event ev, events[EPOLL_MAX_EVENTS];
 	struct itimerspec keepalive_value = {
         .it_value = {1, 0},  
         .it_interval = {1, 0}
     };
-    switch_service_t *sys = system_get_instance();
-    int               ret = 1;
+    switch_service_t  *sys = system_get_instance();
+    int                ret = 1;
+    struct epoll_event ev;
 
 
     /*
@@ -1030,14 +1028,14 @@ int switchdev_netlink_main(void)
      * up responses from ops with notifications to make handling easier.
      */
     if ((ret = conn(&sys->netlink.ucsk)) || (ret = conn(&sys->netlink.mcsk))) {
-    	prerr("failed to connect to generic netlink\n");
+    	printf("failed to connect to generic netlink\n");
     	goto out;
     }
     
     /* Resolve the genl family. One family for both unicast and multicast. */
     int fam = genl_ctrl_resolve(sys->netlink.ucsk, SWITCHDEV_GENL_NAME);
     if (fam < 0) {
-    	prerr("failed to resolve generic netlink family: %s\n",
+    	printf("failed to resolve generic netlink family: %s\n",
     	      strerror(-fam));
     	goto out;
     }
@@ -1052,24 +1050,24 @@ int switchdev_netlink_main(void)
     int mcgrp = genl_ctrl_resolve_grp(sys->netlink.mcsk, SWITCHDEV_GENL_NAME,
     				  SWITCHDEV_MC_GRP_NAME);
     if (mcgrp < 0) {
-    	prerr("failed to resolve generic netlink multicast group: %s\n",
+    	printf("failed to resolve generic netlink multicast group: %s\n",
     	      strerror(-mcgrp));
     	goto out;
     }
     /* Join the multicast group. */
     if ((ret = nl_socket_add_membership(sys->netlink.mcsk, mcgrp) < 0)) {
-    	prerr("failed to join multicast group: %s\n", strerror(-ret));
+    	printf("failed to join multicast group: %s\n", strerror(-ret));
     	goto out;
     }
     
     if ((ret = set_cb(sys->netlink.ucsk)) || (ret = set_cb(sys->netlink.mcsk))) {
-    	prerr("failed to set callback: %s\n", strerror(-ret));
+    	printf("failed to set callback: %s\n", strerror(-ret));
     	goto out;
     }
 
     // send start and listen for response
     if ((ret = send_start_msg(sys->netlink.ucsk, fam))) {
-    	prerr("failed to send message: %s\n", strerror(-ret));
+    	printf("failed to send message: %s\n", strerror(-ret));
     }
     printf("listening for messages\n");
     nl_recvmsgs_default(sys->netlink.ucsk);
@@ -1084,24 +1082,17 @@ int switchdev_netlink_main(void)
     sys->netlink.mcsk_fd = nl_socket_get_fd(sys->netlink.mcsk);
     set_nonblocking(sys->netlink.mcsk_fd);
 
-    sys->netlink.epoll_fd = epoll_create1(0);
-
-    if (sys->netlink.epoll_fd < 0) {
-        perror("epoll_create1 failed");
-        goto out;
-    }
-
     ev.events = EPOLLIN;
     ev.data.fd = sys->netlink.ucsk_fd;
-    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.ucsk_fd, &ev);
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->netlink.ucsk_fd, &ev);
 
     ev.events = EPOLLIN;
     ev.data.fd = sys->netlink.mcsk_fd;
-    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.mcsk_fd, &ev);	
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->netlink.mcsk_fd, &ev);	
 
     ev.events = EPOLLIN;
     ev.data.fd = sys->netlink.timer_fd;
-    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.timer_fd, &ev);
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->netlink.timer_fd, &ev);
 	
     //create netlink socket for ops
     sys->netlink.generic_sock = nl_socket_alloc();
@@ -1173,30 +1164,36 @@ int switchdev_netlink_main(void)
     }    
     ev.events = EPOLLIN;
     ev.data.fd = sys->netlink.route_event_fd;
-    epoll_ctl(sys->netlink.epoll_fd, EPOLL_CTL_ADD, sys->netlink.route_event_fd, &ev);
-
-    while (1) {
-        int nfds = epoll_wait(sys->netlink.epoll_fd, events, 10, 100);
-        for (int i = 0; i < nfds; i++) {
-            if (events[i].data.fd == sys->netlink.ucsk_fd) {
-                nl_recvmsgs_default(sys->netlink.ucsk);
-            } else if (events[i].data.fd == sys->netlink.mcsk_fd) {
-                nl_recvmsgs_default(sys->netlink.mcsk);
-            } else if (events[i].data.fd == sys->netlink.timer_fd) {
-                //send_keepalive_msg(sys->ucsk, fam);
-            } else if (events[i].data.fd == sys->netlink.route_event_fd) {
-                nl_recvmsgs_default(sys->netlink.route_event_sock);
-            } else {
-               prerr("unknown event %d\n", events[i].data.fd);
-            }
-        }
-    }
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->netlink.route_event_fd, &ev);
 
     ret = 0;
 out:
-    disconn(sys->netlink.ucsk);
-    disconn(sys->netlink.mcsk);
-    disconn(sys->netlink.route_event_sock);
+    if(ret) {
+        disconn(sys->netlink.ucsk);
+        disconn(sys->netlink.mcsk);
+        disconn(sys->netlink.route_event_sock);
+    }
     return ret;
 }
 
+int switchdev_process_netlink(switch_service_t *sys, int fd)
+{
+    if(!sys) {
+        return -1;
+    }
+
+    if (fd == sys->netlink.ucsk_fd) {
+        nl_recvmsgs_default(sys->netlink.ucsk);
+    } else if (fd == sys->netlink.mcsk_fd) {
+        nl_recvmsgs_default(sys->netlink.mcsk);
+    } else if (fd == sys->netlink.timer_fd) {
+        //send_keepalive_msg(sys->ucsk, fam);
+    } else if (fd == sys->netlink.route_event_fd) {
+        nl_recvmsgs_default(sys->netlink.route_event_sock);
+    } else {
+        printf("unknown event %d\n", fd);
+    }
+ 
+    return 0;
+}
+ 

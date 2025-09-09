@@ -147,6 +147,7 @@ enum switchdev_obj_id {
 };
 
 
-int switchdev_netlink_main(void);
+int switchdev_netlink_init(void);
+int switchdev_process_netlink(switch_service_t *sys, int fd);
 
 #endif 

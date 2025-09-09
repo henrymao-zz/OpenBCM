@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/epoll.h>
 #include <sys/queue.h>
 #include <net/if.h>
 #include <pthread.h>
@@ -17,8 +18,8 @@
 #endif
 
 #include "switchdev_utils.h"
-#include "switchdev_netlink.h"
 #include "switchdev_async_obj.h"
+#include "switchdev_netlink.h"
 
 
 
@@ -90,11 +91,6 @@ int switchdev_portconfig_init(int unit)
 }
 
 
-/* switchdev netlink thread */
-static int switchdev_netlink_thread_priority = 100;
-static volatile sal_thread_t switchdev_netlink_thread_id        = SAL_THREAD_ERROR;
-
-
 static void switchdev_system_init(switch_service_t* sys)
 {
     if (sys == NULL )
@@ -103,26 +99,18 @@ static void switchdev_system_init(switch_service_t* sys)
     memset(sys, 0, sizeof(switch_service_t));
 
     LIST_INIT(&(sys->switch_db.switch_list));
-    pthread_rwlock_init(&(sys->switch_db.switch_rwlock), NULL);
 
     LIST_INIT(&(sys->switch_db.vlan_list));
-    pthread_rwlock_init(&(sys->switch_db.vlan_rwlock), NULL);
 
     LIST_INIT(&(sys->switch_db.lif_list));
-    pthread_rwlock_init(&(sys->switch_db.lif_rwlock), NULL);
 
     LIST_INIT(&(sys->switch_db.l3host_list));
-    pthread_rwlock_init(&(sys->switch_db.l3host_rwlock), NULL);
 
     LIST_INIT(&(sys->switch_db.neigh_list));
-    pthread_rwlock_init(&(sys->switch_db.neigh_rwlock), NULL);
 
     LIST_INIT(&(sys->switch_db.fib_list));
-    pthread_rwlock_init(&(sys->switch_db.fib_rwlock), NULL);
 
     TAILQ_INIT(&(sys->asyncq.object_queue));
-    pthread_mutex_init(&sys->asyncq.object_lock, NULL);
-    pthread_cond_init(&sys->asyncq.object_cond, NULL);
 
     return;
 }
@@ -181,34 +169,10 @@ void system_finalize()
     }    
 }
 
-static void
-switchdev_netlink_thread(void *cookie)
-{
-    COMPILER_REFERENCE(cookie);
-
-    switchdev_netlink_main();
-
-    sal_thread_exit(0);
-}
-
-int switchdev_netlink_init(void)
-{
-    switchdev_netlink_thread_id = sal_thread_create("netlink",
-                                         SAL_THREAD_STKSZ,
-                                         switchdev_netlink_thread_priority,
-                                         switchdev_netlink_thread, NULL);
-    if (switchdev_netlink_thread_id == SAL_THREAD_ERROR) {
-        sal_thread_destroy(switchdev_netlink_thread_id);
-        switchdev_netlink_thread_id = SAL_THREAD_ERROR;
-        return -1;
-    }
-    return 0;
-}
-
-
 /*
  * Main loop.
  */
+#define EPOLL_MAX_EVENTS 10
 int main( int argc, char *argv[] )
 {
     int                   rc     = 0;
@@ -220,15 +184,27 @@ int main( int argc, char *argv[] )
     async_obj_neigh_t   **neigh  = NULL;
     ip_address_t          ip_default;
     uint8_t               system_mac[ETHER_ADDR_LEN] = {0x20, 0x88, 0x10, 0x58, 0xf9, 0x80}; //need to get from eeprom
+    struct epoll_event    events[EPOLL_MAX_EVENTS];
 
     //parse argv
 
     if ((sys = system_get_instance()) == NULL )
         return -1;    
 
-    // start system processes
+    sys->epoll_fd = epoll_create1(0);
+    if (sys->epoll_fd < 0) {
+        printf("epoll_create1 failed");
+        return -1;
+    }
+
     /* Initialize netlink to switchdev kernel module */
     switchdev_netlink_init();
+
+    /* Initialize async obj eventfd */
+    rc = switchdev_async_obj_init(sys);
+    if(rc) {
+        goto init_fail;
+    }
 
     //create switch object - hardcode for unit 0 for now
     sw = async_obj_switch_find_or_new(0);
@@ -344,8 +320,26 @@ int main( int argc, char *argv[] )
         goto init_fail;
     }
 
-    //main thread handle obj processing
-    rc = switchdev_async_obj_main(sys);
+    while (1) {
+        int nfds = epoll_wait(sys->epoll_fd, events, 10, 100);
+        for (int i = 0; i < nfds; i++) {
+            if (events[i].data.fd == sys->netlink.ucsk_fd) {
+                switchdev_process_netlink(sys, events[i].data.fd);
+            } else if (events[i].data.fd == sys->netlink.mcsk_fd) {
+                switchdev_process_netlink(sys, events[i].data.fd);
+            } else if (events[i].data.fd == sys->netlink.timer_fd) {
+                //send_keepalive_msg(sys->ucsk, fam);
+            } else if (events[i].data.fd == sys->netlink.route_event_fd) {
+                switchdev_process_netlink(sys, events[i].data.fd);
+            } else if (events[i].data.fd == sys->asyncq.object_fd) {
+                switchdev_process_asyncq(sys, events[i].data.fd); 
+            } else {
+               printf("unknown event %d\n", events[i].data.fd);
+            }
+        }
+    }
+
+
 
 init_fail:
     system_finalize();

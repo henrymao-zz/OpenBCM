@@ -12,11 +12,12 @@
 
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
+#include <sys/eventfd.h>
 #include <fcntl.h>
 #include <linux/netdevice.h>
 #include <linux/if_bridge.h>
 #include <pthread.h>
-
+#include <unistd.h>
 
 #include "switchdev_utils.h"
 #include "switchdev_async_obj.h"
@@ -42,7 +43,6 @@ int async_object_create(async_object_t *obj)
     }
 
     //printf("async_object_create type %d state %d\n", obj->type, obj->state);
-    pthread_mutex_lock(&obj->lock);
 
     switch(obj->state) {
         case ASYNC_OBJ_STATE_NEW:
@@ -61,133 +61,23 @@ int async_object_create(async_object_t *obj)
             break;
     }
 
-    pthread_mutex_unlock(&obj->lock);
-
     return 0;
 }
 
 
-pthread_rwlock_t* async_obj_list_rwlock(async_object_t *obj)
-{
-    switch_service_t   *sys   = NULL;
-    pthread_rwlock_t   *lock  = NULL;
-
-    if ((sys = system_get_instance()) == NULL)
-        return NULL;
-
-    switch(obj->type) {
-        case ASYNC_OBJ_TYPE_SWITCH:
-            lock = &(sys->switch_db.switch_rwlock);
-            break;
-
-        case ASYNC_OBJ_TYPE_VLAN:
-            lock = &(sys->switch_db.vlan_rwlock);
-            break;
-
-        case ASYNC_OBJ_TYPE_INTF:
-            lock = &(sys->switch_db.lif_rwlock);
-            break;
-
-        case ASYNC_OBJ_TYPE_L3HOST:
-            lock = &(sys->switch_db.l3host_rwlock);
-            break;
-
-        case ASYNC_OBJ_TYPE_NEIGH:
-            lock = &(sys->switch_db.neigh_rwlock);
-            break;
-
-        case ASYNC_OBJ_TYPE_FIB:
-            lock = &(sys->switch_db.fib_rwlock);
-            break;
-
-        default:
-            break;
-    }
-
-    return lock;
-}
-
-
-async_object_t** async_object_find(async_object_t *obj)
-{
-    switch_service_t   *sys   = NULL;
-    async_obj_entry_t  *entry = NULL;
-    async_obj_list_t   *list  = NULL;
-
-    if ((sys = system_get_instance()) == NULL)
-        return NULL;
-
-    switch(obj->type) {
-        case ASYNC_OBJ_TYPE_SWITCH:
-            list = &(sys->switch_db.switch_list);
-            break;
-
-        case ASYNC_OBJ_TYPE_VLAN:
-            list = &(sys->switch_db.vlan_list);
-            break;
-
-        case ASYNC_OBJ_TYPE_INTF:
-            list = &(sys->switch_db.lif_list);
-            break;
-
-        case ASYNC_OBJ_TYPE_L3HOST:
-            list = &(sys->switch_db.l3host_list);
-            break;
-
-        case ASYNC_OBJ_TYPE_NEIGH:
-            list = &(sys->switch_db.neigh_list);
-            break;
-
-        case ASYNC_OBJ_TYPE_FIB:
-            list = &(sys->switch_db.fib_list);
-            break;
-
-        default:
-            break;
-    }
-    if(!list) {
-        return NULL;
-    }
-
-    LIST_FOREACH(entry, list, system_next) {
-       if(entry->obj == obj) {
-           return &(entry->obj);
-       }
-    }
-
-    return NULL;
-}
-
-
-
-static void async_object_remove_and_free(async_object_t **obj)
+static void async_object_remove_from_list(async_object_t **obj)
 {
     switch_service_t    *sys  = NULL;
-    pthread_rwlock_t    *lock = NULL;
     async_obj_entry_t   *entry = NULL;
 
     if (!(sys = system_get_instance()))
         return;
 
     if(obj) {
-         lock = async_obj_list_rwlock(*obj); 
-         if (!lock) {
-             printf("async_object_remove_and_free failed to get rwlock\n");
-             return;
-         }
-         pthread_rwlock_wrlock(lock); 
-
-         entry = container_of(obj, struct async_obj_entry_s, obj);
-         LIST_REMOVE(entry, system_next);
-         entry->obj = NULL;
-
-
-         pthread_rwlock_unlock(lock);
+        entry = container_of(obj, struct async_obj_entry_s, obj);
+        LIST_REMOVE(entry, system_next);
 
         free(entry);
-        free(*obj);
-        
-
     }
     return;
 }
@@ -196,8 +86,8 @@ int async_object_delete(async_object_t **obj)
 {
     async_queue_entry_t *work  = NULL;
     switch_service_t    *sys   = NULL;
-    pthread_rwlock_t    *lock  = NULL;
     async_obj_entry_t   *entry = NULL;
+    uint64_t             inc   = 1;
 
     //put obj into download list, which will be used by obj download thread
 
@@ -216,39 +106,33 @@ int async_object_delete(async_object_t **obj)
         case ASYNC_OBJ_STATE_PENDING:
         case ASYNC_OBJ_STATE_FAILED:
             //should not exist in work queue (sys->asyncq.object_queue)
-            async_object_remove_and_free(obj);
+            printf("async_obj_delete before active state %d", (*obj)->state);
+            async_object_remove_from_list(obj);
+            free(*obj);
             break;
 
         case ASYNC_OBJ_STATE_ACTIVE:
             //remove from object list
-            lock = async_obj_list_rwlock(obj); 
-            if (!lock) {
-                printf("async_object_delete failed to get rwlock\n");
-                break;
-            }
             entry = container_of(obj, struct async_obj_entry_s, obj);
 
-            pthread_rwlock_wrlock(lock); 
             LIST_REMOVE(entry, system_next);
-            entry->obj = NULL;
-            free(entry);
-            pthread_rwlock_unlock(lock);
 
             (*obj)->state = ASYNC_OBJ_STATE_DELETING;
             //add to work queue (sys->asyncq.object_queue)
             work = (async_queue_entry_t *)malloc(sizeof(async_queue_entry_t));
             if (!work) {
                 //printf("async_object_delete malloc failed\n");
+                free(entry);
                 break;
             }
 
-            work->obj = *obj;
+            work->obj  = *obj;
+            free(entry);
 
-            pthread_mutex_lock(&(sys->asyncq.object_lock));
             TAILQ_INSERT_TAIL(&(sys->asyncq.object_queue), work, _links);
-            pthread_mutex_unlock(&(sys->asyncq.object_lock));
 
-            pthread_cond_signal(&sys->asyncq.object_cond);
+            //wake up processing
+            write(sys->asyncq.object_fd, &inc, sizeof(inc)); 
             break;
         case ASYNC_OBJ_STATE_DELETING:
             //should already inserted into work queue (sys->object_queue)
@@ -256,7 +140,6 @@ int async_object_delete(async_object_t **obj)
         default:
             break;
     }
-
 
     return 0;
 }
@@ -267,6 +150,8 @@ int async_object_download(async_object_t *obj)
     async_queue_entry_t *work   = NULL;
     async_obj_entry_t   *parent = NULL;
     switch_service_t    *sys    = NULL;
+    uint64_t             inc    = 1;
+    int                  nwrite = 0;
 
     //put obj into download list, which will be used by obj download thread
 
@@ -324,11 +209,12 @@ int async_object_download(async_object_t *obj)
         }
     }
 
-    pthread_mutex_lock(&(sys->asyncq.object_lock));
     TAILQ_INSERT_TAIL(&(sys->asyncq.object_queue), work, _links);
-    pthread_mutex_unlock(&(sys->asyncq.object_lock));
 
-    pthread_cond_signal(&sys->asyncq.object_cond);
+    nwrite = write(sys->asyncq.object_fd, &inc, sizeof(inc));
+    if (nwrite != sizeof(inc)) {
+        printf("write failed fd %d %s\n",sys->asyncq.object_fd, strerror(errno));
+    }
     return 0;
 }
 
@@ -370,16 +256,12 @@ int async_object_add_parent(async_object_t *obj, async_object_t *parent)
     //update parent's child list
     memset(entry, 0, sizeof(async_obj_entry_t));
     entry->obj = obj;
-    pthread_mutex_lock(&(parent->lock));
     LIST_INSERT_HEAD(&(parent->child_list), entry, system_next);
-    pthread_mutex_unlock(&(parent->lock));
 
     //update self's parent list
     memset(entry_p, 0, sizeof(async_obj_entry_t));
     entry_p->obj = parent;
-    pthread_mutex_lock(&(obj->lock));
     LIST_INSERT_HEAD(&(obj->parent_list), entry_p, system_next);
-    pthread_mutex_unlock(&(obj->lock));
 
     return 0;
 }
@@ -422,7 +304,6 @@ async_obj_switch_t** async_obj_switch_find_or_new(int unit)
     //initialize object base
     obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_SWITCH;
-    pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
@@ -503,7 +384,6 @@ async_obj_vlan_t** async_obj_vlan_find_or_new(int vid)
     //initialize object base
     obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_VLAN;
-    pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
@@ -519,9 +399,7 @@ async_obj_vlan_t** async_obj_vlan_find_or_new(int vid)
     //initialize object specific
     obj->vid = vid;
 
-    pthread_rwlock_wrlock(&sys->switch_db.vlan_rwlock);
     LIST_INSERT_HEAD(&sys->switch_db.vlan_list, entry, system_next);
-    pthread_rwlock_unlock(&sys->switch_db.vlan_rwlock);
 
     return (async_obj_vlan_t**)&(entry->obj);
 }
@@ -535,17 +413,14 @@ async_obj_vlan_t** async_obj_vlan_find(int vid)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    pthread_rwlock_rdlock(&sys->switch_db.vlan_rwlock);
     LIST_FOREACH(entry, &(sys->switch_db.vlan_list), system_next)
     {
         obj = (async_obj_vlan_t *)entry->obj;
         if (obj && obj->vid == vid) {
-            pthread_rwlock_unlock(&sys->switch_db.vlan_rwlock);
             return (async_obj_vlan_t **)&(entry->obj);
         }
     }
 
-    pthread_rwlock_unlock(&sys->switch_db.vlan_rwlock);
     return NULL;
 
 }
@@ -562,17 +437,14 @@ async_obj_intf_t** async_obj_intf_find(int ifindex)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    pthread_rwlock_rdlock(&sys->switch_db.lif_rwlock);
     LIST_FOREACH(entry, &(sys->switch_db.lif_list), system_next)
     {
         obj = (async_obj_intf_t *)entry->obj;
         if (obj && obj->ifindex == ifindex) {
-            pthread_rwlock_unlock(&sys->switch_db.lif_rwlock);
             return (async_obj_intf_t **)&(entry->obj);
         }
     }
 
-    pthread_rwlock_unlock(&sys->switch_db.lif_rwlock);
     return NULL;
 }
 
@@ -585,17 +457,14 @@ async_obj_intf_t** async_obj_intf_find_by_name(char *ifname)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    pthread_rwlock_rdlock(&sys->switch_db.lif_rwlock);
     LIST_FOREACH(entry, &(sys->switch_db.lif_list), system_next)
     {
         obj = (async_obj_intf_t *)entry->obj;
         if (obj && (strncmp(obj->name, ifname, IF_NAMESIZE) == 0)) {
-            pthread_rwlock_unlock(&sys->switch_db.lif_rwlock);
             return (async_obj_intf_t **)&(entry->obj);
         }
     }
 
-    pthread_rwlock_unlock(&sys->switch_db.lif_rwlock);
     return NULL;
 }
 
@@ -634,7 +503,6 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
     //initialize object base
     obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_INTF;
-    pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
@@ -652,9 +520,7 @@ async_obj_intf_t** async_obj_intf_new(char* ifname)
 
     snprintf(obj->name, IF_NAMESIZE, "%s", ifname);
 
-    pthread_rwlock_wrlock(&sys->switch_db.lif_rwlock);
     LIST_INSERT_HEAD(&(sys->switch_db.lif_list), entry, system_next);
-    pthread_rwlock_unlock(&sys->switch_db.lif_rwlock);
 
     return (async_obj_intf_t**)&(entry->obj);
 }
@@ -697,7 +563,6 @@ async_obj_l3host_t** async_obj_l3host_find_or_new(ip_address_t *host)
     //initialize object base
     obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_L3HOST;
-    pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
@@ -713,9 +578,7 @@ async_obj_l3host_t** async_obj_l3host_find_or_new(ip_address_t *host)
     //initialize object specific
     memcpy(&obj->host, host, sizeof(ip_address_t));
 
-    pthread_rwlock_wrlock(&sys->switch_db.l3host_rwlock);
     LIST_INSERT_HEAD(&sys->switch_db.l3host_list, entry, system_next);
-    pthread_rwlock_unlock(&sys->switch_db.l3host_rwlock);
 
     return (async_obj_l3host_t**)&(entry->obj);
 
@@ -731,17 +594,15 @@ async_obj_l3host_t** async_obj_l3host_find(ip_address_t *host)
         return NULL;
 
     
-    pthread_rwlock_rdlock(&sys->switch_db.l3host_rwlock);    
     LIST_FOREACH(entry, &sys->switch_db.l3host_list, system_next)
     {
         obj = (async_obj_l3host_t *)entry->obj;
         if (obj &&obj->type == ASYNC_OBJ_TYPE_L3HOST) {
-            if (memcmp(&(obj->host), host, sizeof(ip_address_t)) == 0)
-                pthread_rwlock_unlock(&sys->switch_db.l3host_rwlock);
+            if (memcmp(&(obj->host), host, sizeof(ip_address_t)) == 0) {
                 return (async_obj_l3host_t**)&(entry->obj);
+            }
         }
     }
-    pthread_rwlock_unlock(&sys->switch_db.l3host_rwlock);
 
     return NULL;
 
@@ -759,18 +620,15 @@ async_obj_neigh_t** async_obj_neigh_find(ip_address_t *nh)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    pthread_rwlock_rdlock(&sys->switch_db.neigh_rwlock);
     LIST_FOREACH(entry, &sys->switch_db.neigh_list, system_next)
     {
         obj = (async_obj_neigh_t *)entry->obj;
         if (obj) {
             if (memcmp(&(obj->nh), nh, sizeof(ip_address_t)) == 0) {
-                pthread_rwlock_unlock(&sys->switch_db.neigh_rwlock); 
                 return (async_obj_neigh_t**)&(entry->obj);
             }
         }
     }
-    pthread_rwlock_unlock(&sys->switch_db.neigh_rwlock);
 
     return NULL;
 }
@@ -784,18 +642,15 @@ async_obj_neigh_t** async_obj_neigh_find_type(int neigh_type)
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    pthread_rwlock_rdlock(&sys->switch_db.neigh_rwlock);
     LIST_FOREACH(entry, &sys->switch_db.neigh_list, system_next)
     {
         obj = (async_obj_neigh_t *)entry->obj;
         if (obj) {
             if (obj->neigh_type == neigh_type) {
-                pthread_rwlock_unlock(&sys->switch_db.neigh_rwlock);    
                 return (async_obj_neigh_t**)&(entry->obj);
             }
         }
     }
-    pthread_rwlock_unlock(&sys->switch_db.neigh_rwlock);
 
     return NULL;
 }
@@ -832,7 +687,6 @@ async_obj_neigh_t** async_obj_neigh_new(void)
     //initialize object base
     obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_NEIGH;
-    pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
@@ -849,9 +703,7 @@ async_obj_neigh_t** async_obj_neigh_new(void)
     obj->object_id  = -1;
     obj->neigh_type       = NEIGH_DYNAMIC;
 
-    pthread_rwlock_wrlock(&sys->switch_db.neigh_rwlock);
     LIST_INSERT_HEAD(&sys->switch_db.neigh_list, entry, system_next);
-    pthread_rwlock_unlock(&sys->switch_db.neigh_rwlock);
 
     return (async_obj_neigh_t**)&(entry->obj);
 }
@@ -895,7 +747,6 @@ async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len, int is_ecmp
     if ((sys = system_get_instance()) == NULL)
         return NULL;
 
-    pthread_rwlock_rdlock(&sys->switch_db.fib_rwlock);
     LIST_FOREACH(entry, &(sys->switch_db.fib_list), system_next)
     {
         if (entry->obj && (entry->obj->type == ASYNC_OBJ_TYPE_FIB)) {
@@ -903,13 +754,11 @@ async_obj_fib_t** async_obj_fib_find(ip_address_t *dst, int dst_len, int is_ecmp
             if ((memcmp(&obj->dst, dst, sizeof(ip_address_t)) == 0) &&
                 (obj->dst_len == dst_len) &&
                 (obj->is_ecmp == is_ecmp)) {
-                pthread_rwlock_unlock(&sys->switch_db.fib_rwlock);
                 return (async_obj_fib_t**)&(entry->obj);
             }
         }
     }
 
-    pthread_rwlock_unlock(&sys->switch_db.fib_rwlock);
     return NULL;
 }
 
@@ -951,7 +800,6 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len, int 
     //initialize object base
     obj->state      = ASYNC_OBJ_STATE_NEW;
     obj->type       = ASYNC_OBJ_TYPE_FIB;
-    pthread_mutex_init(&obj->lock, NULL);
     LIST_INIT(&(obj->parent_list));
     LIST_INIT(&(obj->child_list));
 
@@ -970,9 +818,7 @@ async_obj_fib_t** async_obj_fib_find_or_new(ip_address_t *dst, int dst_len, int 
 
     memcpy(&obj->dst, dst, sizeof(ip_address_t));
     
-    pthread_rwlock_wrlock(&sys->switch_db.fib_rwlock);
     LIST_INSERT_HEAD(&sys->switch_db.fib_list, fib, system_next);
-    pthread_rwlock_unlock(&sys->switch_db.fib_rwlock);
 
     return (async_obj_fib_t**)&(fib->obj);
 }
@@ -1062,7 +908,7 @@ int process_async_object(async_queue_entry_t *work)
                 free(work);
                 return -1;              
             }
-                 
+
             obj->object_delete_cb(obj);
 
             //update parent's child list
@@ -1073,7 +919,6 @@ int process_async_object(async_queue_entry_t *work)
                 if (!LIST_EMPTY(&(parent->obj->child_list))) {
                     async_obj_entry_t *found = NULL;
 
-                    pthread_mutex_lock(&(parent->obj->lock));
                     LIST_FOREACH(child, &(parent->obj->child_list), system_next) {
                         if (child->obj == obj) {
                             found = child;
@@ -1086,20 +931,17 @@ int process_async_object(async_queue_entry_t *work)
                          free(found);
                     }
 
-                    pthread_mutex_unlock(&(parent->obj->lock));
                 }
                 //check if there is parent waiting for delete, put them into workqueue
                 if(parent->obj->state == ASYNC_OBJ_STATE_DELETING) {
                     parent->obj->object_download(parent->obj);
                 }
             }
-
             
             //remove workqueue item
             work->obj = NULL;
             free(work);
             free(obj);
-
             break;
             
         default:
@@ -1109,26 +951,22 @@ int process_async_object(async_queue_entry_t *work)
     return 0;
 }
 
-int switchdev_async_obj_main(switch_service_t *sys)
+int switchdev_process_asyncq(switch_service_t *sys, int fd)
 {
-    async_queue_entry_t *work  = NULL;
-    async_object_t      *obj   = NULL;
+    async_object_t      *obj    = NULL;
+    async_queue_entry_t *work    = NULL;
+    uint64_t             counter = 0;
 
     if (!sys) {
         return 0;
     } 
 
-    while(1) {
-        pthread_mutex_lock(&sys->asyncq.object_lock);
-        while (TAILQ_EMPTY(&sys->asyncq.object_queue)) {
-            pthread_cond_wait(&sys->asyncq.object_cond, &sys->asyncq.object_lock);
-        }
+    read(sys->asyncq.object_fd, &counter, sizeof(counter));
 
+    while (!TAILQ_EMPTY(&sys->asyncq.object_queue)) {
         work = TAILQ_FIRST(&sys->asyncq.object_queue);
 
         TAILQ_REMOVE(&sys->asyncq.object_queue, work, _links);
-
-        pthread_mutex_unlock(&sys->asyncq.object_lock);
 
         obj = work->obj;
 
@@ -1139,6 +977,28 @@ int switchdev_async_obj_main(switch_service_t *sys)
 
         process_async_object(work);
     }
+
+    return 0;
+}
+
+int switchdev_async_obj_init(switch_service_t *sys)
+{
+    struct epoll_event ev;
+
+    if (!sys) {
+        return 0;
+    } 
+
+    sys->asyncq.object_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+
+    if (sys->asyncq.object_fd < 0) {
+        printf("switchdev_async_obj_init failed to create event fd, ret %d\n", sys->asyncq.object_fd);
+        return -1;
+    }
+
+    ev.events  = EPOLLIN;
+    ev.data.fd = sys->asyncq.object_fd;
+    epoll_ctl(sys->epoll_fd, EPOLL_CTL_ADD, sys->asyncq.object_fd, &ev);
 
     return 0;
 }

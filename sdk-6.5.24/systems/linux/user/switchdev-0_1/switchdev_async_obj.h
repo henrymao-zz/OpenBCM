@@ -20,6 +20,7 @@ enum object_state_e {
 	ASYNC_OBJ_STATE_ACTIVE,
 	ASYNC_OBJ_STATE_DELETING,
 	ASYNC_OBJ_STATE_FAILED,
+    ASYNC_OBJ_STATE_END,
 	ASYNC_OBJ_STATE_MAX    
 };
 
@@ -49,7 +50,6 @@ typedef int (*object_delete_cb_func)(struct async_object_s *);
 typedef struct async_object_s {
     int              state;
     int              type;
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_parent_list_t, async_obj_entry_s)  parent_list;
 	LIST_HEAD(obj_child_list_t, async_obj_entry_s)  child_list;
@@ -80,7 +80,6 @@ typedef struct async_obj_switch_s {
     //base object, must be same as async_object_t
     int              state;
     int              type;    
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_switch_parent_list_t, async_obj_entry_s)   parent_list;
 	LIST_HEAD(obj_switch_child_list_t, async_obj_entry_s)    child_list;
@@ -112,7 +111,6 @@ typedef struct async_obj_vlan_s {
     //base object, must be same as async_object_t
     int              state;
     int              type;    
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_vlan_parent_list_t, async_obj_entry_s)   parent_list;
 	LIST_HEAD(obj_vlan_child_list_t, async_obj_entry_s)    child_list;
@@ -155,7 +153,6 @@ typedef struct async_obj_intf_s {
     //base object, must be same as async_object_t
     int              state;
     int              type;    
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_intf_parent_list_t, async_obj_entry_s)   parent_list;
 	LIST_HEAD(obj_intf_child_list_t, async_obj_entry_s)    child_list;
@@ -200,7 +197,6 @@ typedef struct async_obj_l3host_s {
     //base object, must be same as async_object_t
     int              state;
     int              type;    
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_l3host_parent_list_t, async_obj_entry_s)   parent_list;
 	LIST_HEAD(obj_l3host_child_list_t, async_obj_entry_s)    child_list;
@@ -236,7 +232,6 @@ typedef struct async_obj_neigh_s {
     //base object, must be same as async_object_t
     int              state;
     int              type;    
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_neigh_parent_list_t, async_obj_entry_s)   parent_list;
 	LIST_HEAD(obj_neigh_child_list_t, async_obj_entry_s)    child_list;
@@ -275,7 +270,6 @@ typedef struct async_obj_fib_s {
     //base object, must be same as async_object_t
     int              state;
     int              type;    
-	pthread_mutex_t  lock;
 
 	LIST_HEAD(obj_fib_parent_list_t, async_obj_entry_s)   parent_list;
 	LIST_HEAD(obj_fib_child_list_t, async_obj_entry_s)    child_list;
@@ -309,27 +303,21 @@ typedef LIST_HEAD(async_obj_list_s, async_obj_entry_s) async_obj_list_t;
 typedef struct switch_object_db_s {
      //list of switch objects
     async_obj_list_t       switch_list;
-    pthread_rwlock_t       switch_rwlock;
 
     // list of vlan objects
     async_obj_list_t       vlan_list;
-    pthread_rwlock_t       vlan_rwlock;
 
     // list of interfaces objects
     async_obj_list_t       lif_list;
-    pthread_rwlock_t       lif_rwlock;
 
     // list of l3host objects
     async_obj_list_t       l3host_list;
-    pthread_rwlock_t       l3host_rwlock;
 
     // list of neigh objects
     async_obj_list_t       neigh_list;
-    pthread_rwlock_t       neigh_rwlock;
 
     // list of fib objects
     async_obj_list_t       fib_list;
-    pthread_rwlock_t       fib_rwlock;
 
 }switch_object_db_t;
 
@@ -341,8 +329,7 @@ typedef struct  async_queue_entry_s {
 
 typedef struct async_workqueue_s {
     TAILQ_HEAD(obj_q_t, async_queue_entry_s)      object_queue;
-	pthread_mutex_t                               object_lock;
-	pthread_cond_t                                object_cond;
+    int                                           object_fd;
 } async_workqueue_t;
 
 typedef struct switch_netlink_s {
@@ -356,11 +343,12 @@ typedef struct switch_netlink_s {
     int     mcsk_fd;
     int     route_event_fd;
     int     timer_fd;
-    int     epoll_fd;   
     int     generic_sock_fd;
 }switch_netlink_t;
 
 typedef struct switch_service_s {
+    int                                           epoll_fd;
+
     // netlink 
     switch_netlink_t                              netlink;
 
@@ -374,7 +362,8 @@ typedef struct switch_service_s {
 
 switch_service_t* system_get_instance();
 
-int switchdev_async_obj_main(switch_service_t *sys);
+int switchdev_async_obj_init(switch_service_t *sys);
+int switchdev_process_asyncq(switch_service_t *sys, int fd); 
 
 
 #endif 
