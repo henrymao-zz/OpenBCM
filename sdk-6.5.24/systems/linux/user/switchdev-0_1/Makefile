@@ -72,9 +72,6 @@ ifeq ($(BCM_LIBDIR),)
 BCM_LIBDIR := $(LIBDIR)/lib
 endif
 
-BCM_LOCAL := switchdev_init.$(targetplat)$(all_suffix)
-BCM := $(DEST_DIR)/$(BCM_LOCAL)
-
 BCMLT_ISSUDLL_LOCAL := libsdkissu.so.$(SDKLT_VER)
 BCM_ISSUDLL_LOCAL   := libbcmissu.so.$(SDK_VER)
 BCMLT_ISSUDLL := $(DEST_DIR)/$(BCMLT_ISSUDLL_LOCAL)
@@ -109,8 +106,7 @@ KERNEL_TARGETS := $(KERNEL_BDE) $(USER_BDE)
 LOCAL_KERNEL_TARGETS := $(patsubst %,$(realpath ..)/$(platform)/%,$(KERNEL_BDE_LOCAL) $(USER_BDE_LOCAL))
 
 # Main BCM application
-BCM_TARGETS := $(BCM)
-LOCAL_BCM_TARGETS := $(patsubst %,$(realpath ..)/$(platform)/%,$(BCM_LOCAL) $(BCM_LOCAL).dbg)
+BCM_TARGETS := $(LIBBCM)
 
 # SDK ISSU shared libraries
 ifdef BUILD_SDKISSU_DLL
@@ -118,12 +114,6 @@ BCM_TARGETS += $(BCMLT_ISSUDLL)
 endif
 ifdef BUILD_BCMISSU_DLL
 BCM_TARGETS += $(BCM_ISSUDLL)
-endif
-ifdef BUILD_SDKISSU_DLL
-LOCAL_BCM_TARGETS += $(patsubst %,$(LOCAL_TARGET_PATH)/%,$(BCMLT_ISSUDLL_LOCAL))
-endif
-ifdef BUILD_BCMISSU_DLL
-LOCAL_BCM_TARGETS += $(patsubst %,$(LOCAL_TARGET_PATH)/%,$(BCM_ISSUDLL_LOCAL))
 endif
 
 # Libraries to be released
@@ -193,9 +183,6 @@ libopennsa: user_libs $(LOCAL_LIB_TARGETS)
 ifeq ($(NO_LOCAL_TARGETS),)
 # Build kernel modules only
 mod: $(LOCAL_KERNEL_TARGETS)
-
-# Build main BCM application only
-bcm: $(LOCAL_BCM_TARGETS)
 
 define LOCAL_TARGET_DEF
 $(1) : $(DEST_DIR)/$(notdir $(1))
@@ -473,48 +460,25 @@ pli:
 $(DEST_DIR):
 	mkdir --parents --verbose $@
 
-$(DEST_DIR)/libopennsa.a: $(BCM) $(DEST_DIR)
+$(DEST_DIR)/libopennsa.a: $(DEST_DIR)
 	(echo create $@; for i in $(sort $(BCM_LIBS_BLD)); do echo addlib $$i; done; echo save) | ar -M
 
-$(DEST_DIR)/libopennsa.so: $(BCM) $(DEST_DIR)
+$(DEST_DIR)/libopennsa.so: $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
 
-SWITCHDEV_OBJ = $(BLDDIR)/switchdev_init.o \
-		$(BLDDIR)/switchdev_netlink.o \
-		$(BLDDIR)/switchdev_async_obj.o \
-		$(BLDDIR)/switchdev_dstty.o \
+SWITCHDEV_OBJ = $(BLDDIR)/switchdev_dstty.o \
 		$(BLDDIR)/switchdev_broadcom.o\
 		$(BLDDIR)/switchdev_utils.o
 
 $(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
-	gcc -shared $(CFLAGS) -fPIC -DLIB_SWITCHDEV -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
+	gcc -shared $(CFLAGS) -fPIC -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
 	$(SWITCHDEV_OBJ) $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
-	-lopennsa $(shell pkg-config --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) -o $@
-
-$(BCM): $(BCM).dbg
-	mkdir -p $(@D)
-	$(OBJCOPY) --strip-debug $< $@
+	-lopennsa -o $@
 
 LINKER := $(CC)
 ifeq ($(C_CPP_CODE_MIX), TRUE)
 LINKER := $(CXX)
 endif
-
-$(BCM).dbg: user_libs $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o \
-	${PLATFORM_DEFINES_OBJ}
-	@rm -f $@	# Prevent core dump if currently running
-ifeq (1,$(LINK_STATIC))
-	@echo Linking $@ # This is needed for error parsing
-else
-	@echo Linking $@ dynamically # This is needed for error parsing
-endif
-	$(LINKER) $(CFLAGS) -o $@ $(SWITCHDEV_OBJ) $(BLDDIR)/version.o \
-	$(shell pkg-config --cflags --libs libnl-3.0 libnl-genl-3.0 libnl-route-3.0) \
-	-Wl,--start-group ${PLATFORM_DEFINES_OBJ} $(BCM_LIBS_BLD)  -Wl,--end-group $(LDFLAGS)
-
-$(BCM_ISSUDLL) $(BCMLT_ISSUDLL) : $(BCM)
-	mkdir -p $(@D)
-	$(CP) -p $(BCM_LIBDIR)/$(@F) $@
 
 $(KERNEL_BDE): $(KERN_BLDROOT)/linux-kernel-bde.$(KOBJ)
 	mkdir -p $(@D)
@@ -577,7 +541,7 @@ endif
 	$(RM) $(BLDDIR)/version.c $(BLDDIR)/version.o
 	$(RM) $(BLDDIR)/platform_defines.c $(BLDDIR)/platform_defines.o
 	$(RM) $(SWITCHDEV_OBJ)
-	$(RM) $(KERNEL_BDE) $(USER_BDE) $(BCM) $(BCM).dbg
+	$(RM) $(KERNEL_BDE) $(USER_BDE)
 	$(RM) $(BCM_KNET)
 ifdef BUILD_SDKLT
 	$(RM) $(KERNEL_NGBDE) $(KERNEL_NGKNET)
@@ -627,7 +591,7 @@ ifndef DELIVERY
 $(error DELIVERY required)
 endif
 
-DELIVERABLES := $(KERNEL_BDE) $(USER_BDE) $(BCM) $(BCM).dbg
+DELIVERABLES := $(KERNEL_BDE) $(USER_BDE) $(LIBBCM)
 ifdef BUILD_SDKISSU_DLL
 DELIVERABLES += $(BCMLT_ISSUDLL)
 endif
