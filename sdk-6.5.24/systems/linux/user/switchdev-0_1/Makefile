@@ -97,7 +97,7 @@ KERNEL_NGKNET := $(DEST_DIR)/$(KERNEL_NGKNET_LOCAL)
 
 OPENNSA = libopennsa.a libopennsa.so
 
-LIBBCM = libbcm.so
+LIBBCM = libswitchdev.so
 
 LOCAL_TARGET_PATH := $(realpath ..)/$(platform)
 
@@ -468,12 +468,13 @@ $(DEST_DIR)/libopennsa.so: $(DEST_DIR)
 
 SWITCHDEV_OBJ = $(BLDDIR)/switchdev_dstty.o \
 		$(BLDDIR)/switchdev_broadcom.o\
-		$(BLDDIR)/switchdev_utils.o
+		$(BLDDIR)/switchdev_utils.o \
+        $(BLDDIR)/config_init_defaults.o
 
-$(DEST_DIR)/libbcm.so: libopennsa $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
+$(DEST_DIR)/libswitchdev.so: libopennsa $(PLI) $(SWITCHDEV_OBJ) $(BLDDIR)/version.o ${PLATFORM_DEFINES_OBJ}
 	gcc -shared $(CFLAGS) -fPIC -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive \
-	$(SWITCHDEV_OBJ) $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
-	-lopennsa -o $@
+	$(SWITCHDEV_OBJ) $(BCM_LIBS_BLD) $(BLDDIR)/version.o -Wl,--no-whole-archive -L $(DEST_DIR) \
+	-o $@
 
 LINKER := $(CC)
 ifeq ($(C_CPP_CODE_MIX), TRUE)

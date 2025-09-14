@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -13,6 +14,7 @@
 #include <linux/netdevice.h>
 #include <linux/if_bridge.h>
 #include <pthread.h>
+#include <pty.h>
 
 #ifndef NO_SAL_APPL
 #include <sal/appl/sal.h>
@@ -1982,15 +1984,15 @@ static int switchdev_broadcom_init(void)
 }
 
 
+extern int switchdev_dstty_init(int ttyfd);
+
 int switchdev_create_switch(int unit, uint8_t sysmac[6])
 {
     //create a switch object, and do init
     int i;
     uint32 flags;
     int rv = BCM_E_NONE;
-#ifdef LIB_SWITCHDEV
     int ttyfd, appfd;
-#endif
 #if defined(BCM_LTSW_SUPPORT)
     int cfg_file_idx = 0;
 #endif
