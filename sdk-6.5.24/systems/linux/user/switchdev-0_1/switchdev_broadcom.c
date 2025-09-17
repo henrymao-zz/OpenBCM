@@ -1986,7 +1986,7 @@ static int switchdev_broadcom_init(void)
 
 extern int switchdev_dstty_init(int ttyfd);
 
-int switchdev_create_switch(int unit, uint8_t sysmac[6])
+int SwitchdevCreateSwitch(int unit, uint8_t sysmac[6])
 {
     //create a switch object, and do init
     int i;
@@ -2232,4 +2232,43 @@ int switchdev_create_switch(int unit, uint8_t sysmac[6])
     switchdev_broadcom_init();
 
     return 0;
+}
+
+int SwitchdevCreateVlan(int unit, int vid, int ifclass, bool blockbroadcast)
+{
+    int                      rc   = 0;
+    bcm_vlan_control_vlan_t  vlan_control;
+    bcm_port_config_t        port_config;
+    bcm_vlan_block_t         vlan_block;
+
+    rc = bcm_vlan_create(unit,vid);
+
+    if(rc) {
+        if (rc != BCM_E_EXISTS) {
+            printf("async_obj_vlan_create_cb failed to create vlan %d rc %d\n",vlan->vid, rc);
+        } else {
+            return 0;
+        }
+        return rc;
+    }
+    
+    //Set if_class if not 0(default)
+    if (ifclass) {
+        bcm_vlan_control_vlan_get(unit, vid, &vlan_control);
+        vlan_control.if_class = ifclass;
+        bcm_vlan_control_vlan_set(unit, vid, vlan_control);
+    }
+
+    //set vlan block
+    if (vlan->blockbroadcast) {
+        bcm_port_config_get(unit, &port_config); 
+
+        bcm_vlan_block_t_init(&vlan_block);
+        vlan_block.unknown_multicast = port_config.all; 
+        vlan_block.unknown_unicast   = port_config.all; 
+        vlan_block.broadcast         = port_config.all;    
+        bcm_vlan_block_set(unit, vid, &vlan_block);
+    }
+
+    return rc;
 }
