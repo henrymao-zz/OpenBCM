@@ -2479,3 +2479,47 @@ int SwitchdevCreateIntf(IfParam *param)
     }
     return 0;
 }
+
+
+
+int SwitchdevCreateNeigh(NeighParam *param)
+{
+    bcm_l3_egress_t    egress_object;
+    int                rc        = 0;
+    int                object_id = -1;
+
+    //printf("async_obj_neigh_create_cb %p enter\n", obj);
+
+    if (!param) {
+        return -1;
+    }
+
+    bcm_l3_egress_t_init(&egress_object);
+
+    if (param->NeighType == NEIGH_DYNAMIC) {
+        egress_object.intf   = param->HalL3Intf;
+        egress_object.port   = param->HalPort;
+        egress_object.vlan   = param->VlanId;      //should always be 4095
+    } else if (param->NeighType == NEIGH_FORUS) {
+        egress_object.module = 0;
+        egress_object.port   = param->HalPort;        
+        if (neigh->vlan_id == 4095) {
+            egress_object.intf   = 8191;
+            egress_object.vlan   = 0;
+        } else {
+            egress_object.intf   = param->HalL3Intf;
+            egress_object.vlan   = param->VlanId;
+        }
+    }
+
+    memcpy(egress_object.mac_addr, param->Mac, ETHER_ADDR_LEN);
+
+    // create l3 egress
+    rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);    
+    if (rc) {
+        printf("async_obj_neigh_create_cb l3_egress create failed %d\n", rc);
+    } 
+    param->HalObjectId = object_id;
+
+    return rc;
+}
