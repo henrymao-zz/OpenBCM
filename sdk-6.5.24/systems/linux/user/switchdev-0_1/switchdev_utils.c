@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#include "switchdev_utils.h"
+#include "switchdev.h"
 
 #define IPADDR_STR_LEN 64
 static __thread char ipaddr_buf[IPADDR_STR_LEN];
@@ -18,7 +18,7 @@ char *ipaddr2str(ip_address_t *ipaddr)
     uint8_t *data = (uint8_t *)ipaddr->ip;
     uint32_t ipv4 = ntohl(ipaddr->ip[0]);
 
-    if(ipaddr->protocol == AF_INET) {
+    if(ipaddr->family == AF_INET) {
         sprintf(ipaddr_buf, "%d.%d.%d.%d",
             (ipv4 >> 24) & 0xff, (ipv4 >> 16) & 0xff,
             (ipv4 >> 8) & 0xff, ipv4 & 0xff);

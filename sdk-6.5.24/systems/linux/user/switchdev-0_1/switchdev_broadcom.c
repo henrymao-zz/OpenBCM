@@ -50,7 +50,6 @@
 #include <opennsa/l3.h>
 #include <opennsa/range.h>
 
-#include "switchdev_utils.h"
 #include "switchdev.h"
 
 //#include <soc/esw/cancun.h>
@@ -2503,7 +2502,7 @@ int SwitchdevCreateNeigh(NeighParam *param)
     } else if (param->NeighType == NEIGH_FORUS) {
         egress_object.module = 0;
         egress_object.port   = param->HalPort;        
-        if (neigh->vlan_id == 4095) {
+        if (param->VlanId == 4095) {
             egress_object.intf   = 8191;
             egress_object.vlan   = 0;
         } else {
@@ -2512,7 +2511,7 @@ int SwitchdevCreateNeigh(NeighParam *param)
         }
     }
 
-    memcpy(egress_object.mac_addr, param->Mac, ETHER_ADDR_LEN);
+    memcpy(egress_object.mac_addr, param->Mac, 6);
 
     // create l3 egress
     rc = bcm_l3_egress_create(0, 0, &egress_object, &object_id);    
