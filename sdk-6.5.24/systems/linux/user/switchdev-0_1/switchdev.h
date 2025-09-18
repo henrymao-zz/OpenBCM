@@ -41,8 +41,8 @@ typedef struct ip_address_s {
 }ip_address_t;
 
 typedef struct NeighParam_s {
+    int                Unit;
     int                NeighType;
-    ip_address_t       Nh;
     uint8_t            Mac[6];
     int                IfIndex;               //linux ifindex
     char              *IfName;                //linux ifname
