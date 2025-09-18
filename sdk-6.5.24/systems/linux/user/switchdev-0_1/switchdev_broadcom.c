@@ -2511,3 +2511,121 @@ int SwitchdevCreateNeigh(NeighParam *param)
 
     return rc;
 }
+
+
+static void ipv6_create_mask(uint8 *ip6_mask, uint32 prefix_length) {
+    int i;
+
+    for (i=15; i>=0; i--) {
+        if (i < prefix_length/8) {
+            ip6_mask[i] = 0xFF;
+        } else if (i == prefix_length/8) {
+            ip6_mask[i] = 0xFF - ((1 << (8 -(prefix_length % 8))) - 1);
+        } else {
+            ip6_mask[i] = 0X00;
+        }
+    }
+}
+
+static int switchdevCreateFIBSimple(FIBParam *param)
+{
+    bcm_l3_route_t     route_info;
+    int                rc    = 0;
+
+    if (!param) {
+        return -1;
+    }
+
+    bcm_l3_route_t_init(&route_info);
+
+    if (fib->dst.protocol == AF_INET) {
+        route_info.l3a_subnet  = ntohl(param->Dest.ip[0]);
+        if (param->PrefixLen == 0) {
+            route_info.l3a_ip_mask = 0;
+        } else {
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - param->PrefixLen)) & 0xFFFFFFFF;
+        }
+        //printf("async_obj_fib_create_cb l3a_subnet %x l3a_ip_mask %x\n", route_info.l3a_subnet, route_info.l3a_ip_mask);
+    } else {
+        route_info.l3a_flags = BCM_L3_IP6;
+        memcpy(route_info.l3a_ip6_net, param->Dest.ip, 16);
+        ipv6_create_mask(route_info.l3a_ip6_mask, param->PrefixLen);
+    } 
+    route_info.l3a_intf = param->HalL3Intf[0];
+    rc = bcm_l3_route_add(0, &route_info);
+    if (BCM_FAILURE(rc)) {
+        printf("async_obj_fib_create_cb l3 route create failed: %s\n", bcm_errmsg(rc));
+    }
+
+    return rc;
+}
+
+
+static int switchdevCreateFIBEcmp(FIBParam *param)
+{
+    bcm_l3_route_t        route_info;
+    bcm_l3_egress_ecmp_t  ecmp_info;
+    bcm_if_t              ecmp_egr[ECMP_MAX_PATH];
+    int                   rc    = 0;
+
+    if (!param) {
+        return -1;
+    }
+
+    bcm_l3_egress_ecmp_t_init(&ecmp_info);
+    //ecmp_info.dynamic_mode=0;
+    //ecmp_info.max_paths = 16;
+    printf("async_obj_create_ecmp num %d\n", param->NumPath);
+    //rc = bcm_l3_egress_multipath_create(0, 0, num_ecmp, ecmp_egr, &ecmp_group_id);
+    rc = bcm_l3_egress_ecmp_create(0, &ecmp_info, param->NumPath, param->HalL3Intf);
+    if (BCM_FAILURE(rc)) {
+        printf("Error executing bcm_l3_egress_ecmp_create(): %s.\n", bcm_errmsg(rc));
+        return rc;
+    }
+
+    param->EcmpGroupId = ecmp_info.ecmp_intf;
+
+    bcm_l3_route_t_init(&route_info);
+
+    if (param->Dest.protocol == AF_INET) {
+        route_info.l3a_subnet  = ntohl(param->Dest.ip[0]);
+        if (param->dst_len == 0) {
+            route_info.l3a_ip_mask = 0;
+        } else {
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - param->PrefixLen)) & 0xFFFFFFFF;
+        }
+        //printf("async_obj_fib_create_cb l3a_subnet %x l3a_ip_mask %x\n", route_info.l3a_subnet, route_info.l3a_ip_mask);
+    } else {
+        route_info.l3a_flags = BCM_L3_IP6;
+        memcpy(route_info.l3a_ip6_net, param->Dest.ip, 16);
+        ipv6_create_mask(route_info.l3a_ip6_mask, param->PrefixLen);
+    } 
+    route_info.l3a_flags |= BCM_L3_MULTIPATH;
+
+    route_info.l3a_intf = param->EcmpGroupId;
+    rc = bcm_l3_route_add(0, &route_info);
+    if (BCM_FAILURE(rc)) {
+        printf("async_obj_create_ecmp l3 route create failed: %s\n", bcm_errmsg(rc));
+    }
+
+    return rc;
+}
+
+int SwitchdevCreateFIB(FIBParam *param)
+{
+    int                rc    = 0;
+
+    if (!param) {
+        return -1;
+    }
+
+    if (!param->IsECMP) {
+        // none ecmp route
+        rc = switchdevCreateFIBSimple(param);
+    } else {
+        // handle ecmp route
+        rc = switchdevCreateFIBEcmp(param);
+    }
+
+    return rc;
+}

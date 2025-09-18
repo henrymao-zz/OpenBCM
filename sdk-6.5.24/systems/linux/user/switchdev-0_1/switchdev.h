@@ -54,4 +54,17 @@ typedef struct NeighParam_s {
 
 int SwitchdevCreateNeigh(NeighParam *param);
 
+#define  ECMP_MAX_PATH 16
+typedef struct FIBParam_s {
+    bool              IsECMP;
+    ip_address_t      Dest;
+    int               PrefixLen;
+    int               HalL3Intf[ECMP_MAX_PATH];       // from neighbour object
+    //ECMP entries
+    int               NumPath;
+    int               EcmpGroupId;                   //return value
+}FIBParam;
+
+int SwitchdevCreateFIB(FIBParam *param);
+
 #endif
