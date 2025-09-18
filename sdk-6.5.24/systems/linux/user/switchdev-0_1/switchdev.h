@@ -10,7 +10,7 @@ enum port_type_e {
     INTF_TYPE_PHYSICAL,
 };
 
-struct IfParam {
+typedef struct IfParam_s {
     int     Unit;
     char   *IfName; 
     int     IfType;  
@@ -26,7 +26,7 @@ struct IfParam {
     bool    AutoNeg;
     bool    PauseTx;
     bool    PauseRx;   
-};
+}IfParam;
 
-int SwitchdevCreateIntf(int unit, int vid, int ifclass, bool blockbroadcast)
+int SwitchdevCreateIntf(IfParam *param);
 #endif
