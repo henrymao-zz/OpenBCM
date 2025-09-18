@@ -466,8 +466,7 @@ $(DEST_DIR)/libopennsa.a: $(DEST_DIR)
 $(DEST_DIR)/libopennsa.so: $(DEST_DIR)
 	gcc -shared -Wl,--allow-multiple-definition,--gc-sections -Wl,--whole-archive $(sort $(BCM_LIBS_BLD)) -Wl,--no-whole-archive -o $@
 
-SWITCHDEV_OBJ = $(BLDDIR)/switchdev_dstty.o \
-		$(BLDDIR)/switchdev_broadcom.o\
+SWITCHDEV_OBJ = $(BLDDIR)/switchdev_broadcom.o\
 		$(BLDDIR)/switchdev_utils.o \
         $(BLDDIR)/config_init_defaults.o
 

@@ -1984,8 +1984,6 @@ static int switchdev_broadcom_init(void)
 }
 
 
-extern int switchdev_dstty_init(int ttyfd);
-
 int SwitchdevCreateSwitch(int unit, uint8_t sysmac[6])
 {
     //create a switch object, and do init
@@ -2216,23 +2214,88 @@ int SwitchdevCreateSwitch(int unit, uint8_t sysmac[6])
     diag_init();
     cmdlist_init();
 
-    /* Get a pseudo tty */
-    if (openpty(&ttyfd, &appfd, NULL, NULL, NULL) < 0) {
-        printf("open pty: %s", strerror(errno));
-    }
-    switchdev_dstty_init(ttyfd);
-    printf("switchdev_dstty_init done, redirecting appfd\n");
-
-    /* redirect appfd */
-    dup2(appfd, 0);
-    dup2(appfd, 1);
-    dup2(appfd, 2);    
-
     //create thread for bcmshell processing
     switchdev_broadcom_init();
 
     return 0;
 }
+
+
+
+static int switchdev_l3_port_init(int unit, int port, int *l3_intf_id)
+{
+    bcm_l2_station_t         l2_station;
+    int                      station_id;
+    bcm_if_t                 ingress_if_egr;
+    bcm_l3_ingress_t         l3_ingress;
+    bcm_l3_intf_t            l3_intf;
+    bcm_error_t              rv       = BCM_E_NONE;        
+    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    async_obj_switch_t     **sw       = NULL;
+
+    sw = async_obj_switch_find(unit);
+    if (!sw || !(*sw)) {
+        printf("switchdev_l3_port_init switch NULL\n");
+        return -1;
+    }
+
+    /* L2 station */
+    bcm_l2_station_t_init(&l2_station);
+    memcpy(l2_station.dst_mac, (*sw)->system_mac, 6);
+    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+    l2_station.vlan         = (*sw)->route_vlan;
+    l2_station.vlan_mask    = 0xfff;
+    l2_station.src_port     = port;
+    l2_station.src_port_mask = 0x00ff;
+
+    rv = bcm_l2_station_add(unit, &station_id, &l2_station);
+	if (BCM_E_NONE != rv) {
+			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
+			return rv;
+	}
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, (*sw)->system_mac,6);
+    l3_intf.l3a_vid = (*sw)->route_vlan;
+    l3_intf.l3a_vrf = 0;
+    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+    rv = bcm_l3_intf_create(unit, &l3_intf);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+    
+    /*
+     * Use the same ID to allocate the ingress interface (L3_IIF)
+     * (This is really not needed for L3MPLS init, since we only need
+     *  to use EGR_L3_INTF to create the tunnel)
+     */
+    ingress_if_egr = l3_intf.l3a_intf_id;
+
+    bcm_l3_ingress_t_init(&l3_ingress);
+    l3_ingress.flags = BCM_L3_INGRESS_REPLACE;
+    l3_ingress.vrf  = 0;
+    l3_ingress.ipmc_intf_id  = ingress_if_egr;
+    rv = bcm_l3_ingress_create(unit, &l3_ingress, &ingress_if_egr);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 ingress intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+
+    /* set port.l3_iif to ingress_if_egr */
+    rv = bcm_port_control_set(unit, port, bcmPortControlL3Ingress, ingress_if_egr);
+    if (BCM_FAILURE(rv)) {
+       printf("l3_port_init bcmPortControlL3Ingress port %d if_egr %d failed: %s\n", 
+               port, ingress_if_egr, bcm_errmsg(rv));
+       return rv;
+    }
+
+    *l3_intf_id = l3_intf.l3a_intf_id;
+
+    return rv;
+}
+
 
 int SwitchdevCreateVlan(int unit, int vid, int ifclass, bool blockbroadcast)
 {
@@ -2271,4 +2334,225 @@ int SwitchdevCreateVlan(int unit, int vid, int ifclass, bool blockbroadcast)
     }
 
     return rc;
+}
+
+
+static int switchdev_l3_port_init(int unit, int route_vlan, int port, int *l3_intf_id, uint8_t mac[6])
+{
+    bcm_l2_station_t         l2_station;
+    int                      station_id;
+    bcm_if_t                 ingress_if_egr;
+    bcm_l3_ingress_t         l3_ingress;
+    bcm_l3_intf_t            l3_intf;
+    bcm_error_t              rv       = BCM_E_NONE;        
+    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
+    /* L2 station */
+    bcm_l2_station_t_init(&l2_station);
+    memcpy(l2_station.dst_mac, mac, 6);
+    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+    l2_station.vlan         = route_vlan;
+    l2_station.vlan_mask    = 0xfff;
+    l2_station.src_port     = port;
+    l2_station.src_port_mask = 0x00ff;
+
+    rv = bcm_l2_station_add(unit, &station_id, &l2_station);
+	if (BCM_E_NONE != rv) {
+			printf("bcm_l2_station_add failed %s\n", bcm_errmsg(rv));
+			return rv;
+	}
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, mac,6);
+    l3_intf.l3a_vid = route_vlan;
+    l3_intf.l3a_vrf = 0;
+    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+    rv = bcm_l3_intf_create(unit, &l3_intf);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+    
+    /*
+     * Use the same ID to allocate the ingress interface (L3_IIF)
+     * (This is really not needed for L3MPLS init, since we only need
+     *  to use EGR_L3_INTF to create the tunnel)
+     */
+    ingress_if_egr = l3_intf.l3a_intf_id;
+
+    bcm_l3_ingress_t_init(&l3_ingress);
+    l3_ingress.flags = BCM_L3_INGRESS_REPLACE;
+    l3_ingress.vrf  = 0;
+    l3_ingress.ipmc_intf_id  = ingress_if_egr;
+    rv = bcm_l3_ingress_create(unit, &l3_ingress, &ingress_if_egr);
+    if (BCM_FAILURE(rv)) {
+       printf("Perf: Create L3 ingress intf failed: %s\n", bcm_errmsg(rv));
+       return rv;
+    }
+
+    /* set port.l3_iif to ingress_if_egr */
+    rv = bcm_port_control_set(unit, port, bcmPortControlL3Ingress, ingress_if_egr);
+    if (BCM_FAILURE(rv)) {
+       printf("l3_port_init bcmPortControlL3Ingress port %d if_egr %d failed: %s\n", 
+               port, ingress_if_egr, bcm_errmsg(rv));
+       return rv;
+    }
+
+    *l3_intf_id = l3_intf.l3a_intf_id;
+
+    return rv;
+}
+
+
+static int SwitchdevCreateIntfPhysical(struct IfParam *param)
+{
+    int                  rc        = 0;
+    bcm_knet_netif_t     netif;
+    bcm_knet_filter_t    filter;  
+    bcm_pbmp_t           pbmp;
+
+
+    if (!param) {
+        return -1;
+    }
+    //printf("async_obj_intf_create_physical ifindex %d ifname %s\n", intf->ifindex, intf->name);
+
+    //create bcm_knet
+    bcm_knet_netif_t_init(&netif);
+    netif.type = BCM_KNET_NETIF_T_TX_LOCAL_PORT;
+    netif.vlan = 0;
+    netif.port = param->HalPort;
+    // netif.flags |= BCM_KNET_NETIF_F_ADD_TAG;
+    netif.flags |= BCM_KNET_NETIF_F_KEEP_RX_TAG;
+    memcpy(netif.mac_addr, param->Mac, sizeof(bcm_mac_t));
+    netif.cb_user_data = 0;
+
+    sal_strncpy(netif.name, param->IfName, sizeof(netif.name) - 1);
+    netif.name[sizeof(netif.name) - 1] = '\0';
+
+    if ((rc = bcm_knet_netif_create(param->Unit, &netif)) < 0) {
+        printf("Error creating network interface:%s port %d rc %d\n",netif.name, netif.port, rc );
+    } else {
+        printf("Creating Interface %s port %d\n",netif.name, netif.port);
+	}
+
+    //get and save ifindex
+    param->IfIndex = if_nametoindex(param->IfName);
+    //printf("async_obj_intf_create_physical ifindex %d ifname %s\n", intf->ifindex, intf->name);
+
+    //Create filter for KNET interface
+    bcm_knet_filter_t_init(&filter);
+    filter.type = BCM_KNET_FILTER_T_RX_PKT;
+    //filter.flags = BCM_KNET_FILTER_F_STRIP_TAG;
+    sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
+    filter.priority = 100;
+    filter.dest_type = BCM_KNET_DEST_T_NETIF;
+    filter.dest_id = netif.port;
+    filter.dest_proto = 0;
+    filter.cb_user_data = 0;
+    filter.m_ingport = netif.port;
+    filter.match_flags |= BCM_KNET_FILTER_M_INGPORT;
+
+    if ((rc = bcm_knet_filter_create(param->Unit, &filter)) < 0) {
+        printf("Error creating packet filter: %d\n", rc);
+    }   
+
+    //spanning tree
+    bcm_port_stp_set(param->Unit, param->HalPort, BCM_STG_STP_FORWARD);
+
+    //linkscan mode
+    bcm_linkscan_mode_set(param->Unit, param->HalPort, BCM_LINKSCAN_MODE_SW);
+
+    //autoneg
+    bcm_port_autoneg_set(param->Unit, param->HalPort, intf->autoneg);
+
+    bcm_port_pause_set(param->Unit, param->HalPort, intf->pause_tx, intf->pause_rx);
+
+    bcm_stat_clear(param->Unit, param->HalPort);
+
+    //l3 mode, create l3 intf (default is l3 mode)
+    //initilize l3 intf in hardware
+    if (param->IsRoutedPort) {
+        //disable ARL for routed ports
+        bcm_port_control_set(param->Unit, param->HalPort, bcmPortControlL2Learn, BCM_PORT_LEARN_FWD);
+        bcm_port_control_set(param->Unit, param->HalPort, bcmPortControlL2Move, BCM_PORT_LEARN_FWD);
+
+        switchdev_l3_port_init(param->Unit, param->HalPort, &intf->l3_intf);
+
+        //Put port into VLAN 4095 -untagged (routed port)
+        BCM_PBMP_PORT_SET(pbmp, param->HalPort);
+        bcm_vlan_port_add(param->Unit, param->VlanId, pbmp, pbmp);
+
+        bcm_port_untagged_vlan_set(param->Unit, param->HalPort, param->VlanId);
+    }
+
+    //printf("local if ifindex %d %s port %d l3_intf %d \n", 
+    //       local_if->ifindex, local_if->name, local_if->hw_port, local_if->l3_intf);
+
+    return rc;
+}
+
+
+static int SwitchdevCreateIntfVlan(struct IfParam *param)
+{
+    int                  rc        = 0;
+    bcm_l2_station_t         l2_station;
+    int                      station_id;
+    bcm_l3_intf_t            l3_intf;
+    bcm_mac_t                mac_mask = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
+    if (!param) {
+        return -1;
+    }
+
+    printf("SwitchdevCreateIntfVlan %s\n", param->IfName);
+
+    //create l2 station for the interface
+    bcm_l2_station_t_init(&l2_station);
+    memcpy(l2_station.dst_mac, param->Mac, 6);
+    memcpy(l2_station.dst_mac_mask, mac_mask, 6);
+    l2_station.flags        = BCM_L2_STATION_IPV4 | BCM_L2_STATION_IPV6 | BCM_L2_STATION_ARP_RARP | BCM_L2_STATION_MPLS; 
+    l2_station.vlan         = 0;
+    l2_station.vlan_mask    = 0;
+    l2_station.src_port     = 0;
+    l2_station.src_port_mask = 0;
+
+    rc = bcm_l2_station_add(param->unit, &station_id, &l2_station);
+	if (BCM_E_NONE != rc) {
+			printf("SwitchdevCreateIntfVlan bcm_l2_station_add failed %s\n", bcm_errmsg(rc));
+			return rc;
+	}
+
+    /* L3 Interface */
+    bcm_l3_intf_t_init(&l3_intf);
+    memcpy(l3_intf.l3a_mac_addr, param->Mac,6);
+    l3_intf.l3a_vid = param->VlanId;
+    l3_intf.l3a_vrf = 0;
+    //l3_intf.l3a_flags |= BCM_L3_ADD_TO_ARL;
+    rc = bcm_l3_intf_create(param->unit, &l3_intf);
+    if (BCM_FAILURE(rc)) {
+       printf("SwitchdevCreateIntfVlan: Create L3 intf failed: %s\n", bcm_errmsg(rc));
+       return rc;
+    }
+
+    param->HalL3Intf = l3_intf.l3a_intf_id;
+
+    //printf("local if ifindex %d %s port %d l3_intf %d \n", 
+    //       local_if->ifindex, local_if->name, local_if->hw_port, local_if->l3_intf);
+
+    return rc;
+}
+
+
+int SwitchdevCreateIntf(struct IfParam *param)
+{
+    switch(param->IfType) {
+        case INTF_TYPE_PHYSICAL:
+            return SwitchdevCreateIntfPhysical(param);
+
+        case INTF_TYPE_VLAN:
+            return SwitchdevCreateIntfVlan(param);
+    }
+    return 0;
 }
