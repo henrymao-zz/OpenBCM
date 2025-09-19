@@ -51,6 +51,7 @@
 #include <opennsa/range.h>
 
 #include "switchdev.h"
+#include "switchdev_utils.h"
 
 //#include <soc/esw/cancun.h>
 /*
@@ -2300,7 +2301,7 @@ int SwitchdevCreateVlan(int unit, int vid, int ifclass, bool blockbroadcast)
 
     if(rc) {
         if (rc != BCM_E_EXISTS) {
-            printf("async_obj_vlan_create_cb failed to create vlan %d rc %d\n",vid, rc);
+            printf("SwitchdevCreateVlan failed to create vlan %d rc %d\n",vid, rc);
         } else {
             return 0;
         }
@@ -2505,7 +2506,7 @@ int SwitchdevCreateNeigh(NeighParam *param)
     // create l3 egress
     rc = bcm_l3_egress_create(param->Unit, 0, &egress_object, &object_id);    
     if (rc) {
-        printf("async_obj_neigh_create_cb l3_egress create failed %d\n", rc);
+        printf("SwitchdevCreateNeigh l3_egress create failed %d\n", rc);
     } 
     param->HalObjectId = object_id;
 
@@ -2554,7 +2555,7 @@ static int switchdevCreateFIBSimple(FIBParam *param)
     route_info.l3a_intf = param->HalL3Neigh[0];
     rc = bcm_l3_route_add(param->Unit, &route_info);
     if (BCM_FAILURE(rc)) {
-        printf("async_obj_fib_create_cb l3 route create failed: %s\n", bcm_errmsg(rc));
+        printf("switchdevCreateFIBSimple l3 route create failed: %s\n", bcm_errmsg(rc));
     }
 
     return rc;
@@ -2574,7 +2575,7 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
     bcm_l3_egress_ecmp_t_init(&ecmp_info);
     //ecmp_info.dynamic_mode=0;
     //ecmp_info.max_paths = 16;
-    printf("async_obj_create_ecmp num %d\n", param->NumPath);
+    printf("switchdevCreateFIBEcmp num %d\n", param->NumPath);
     //rc = bcm_l3_egress_multipath_create(0, 0, num_ecmp, ecmp_egr, &ecmp_group_id);
     rc = bcm_l3_egress_ecmp_create(param->Unit, &ecmp_info, param->NumPath, param->HalL3Neigh);
     if (BCM_FAILURE(rc)) {
@@ -2604,7 +2605,7 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
     route_info.l3a_intf = param->HalEcmpGroupId;
     rc = bcm_l3_route_add(param->Unit, &route_info);
     if (BCM_FAILURE(rc)) {
-        printf("async_obj_create_ecmp l3 route create failed: %s\n", bcm_errmsg(rc));
+        printf("switchdevCreateFIBEcmp l3 route create failed: %s\n", bcm_errmsg(rc));
     }
 
     return rc;
@@ -2649,7 +2650,7 @@ int SwitchdevCreateL3Host(L3HostParam *param)
         memcpy(host_info.l3a_ip6_addr, param->Dest.ip, 16);
     }
 
-    printf("SwitchdevCreateL3Host %s\n", ipaddr2str(&l3host->host));
+    printf("SwitchdevCreateL3Host %s\n", ipaddr2str(&param->Dest));
 
     rc = bcm_l3_host_add(param->Unit, &host_info);
 
@@ -2657,7 +2658,7 @@ int SwitchdevCreateL3Host(L3HostParam *param)
         if (rc == BCM_E_EXISTS) {
             return 0;
         }
-        printf("SwitchdevCreateL3Host bcm_l3_host_add %s failed, rc = %d\n",ipaddr2str(&l3host->host), rc);
+        printf("SwitchdevCreateL3Host bcm_l3_host_add %s failed, rc = %d\n",ipaddr2str(&param->Dest), rc);
     }
     return rc;
 }
