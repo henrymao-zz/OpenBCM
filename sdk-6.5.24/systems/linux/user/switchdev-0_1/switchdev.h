@@ -74,5 +74,6 @@ typedef struct L3HostParam_s {
     int               HalL3Neigh;
 }L3HostParam;
 int SwitchdevCreateL3Host(L3HostParam *param);
+int SwitchdevDeleteL3Host(L3HostParam *param);
 
 #endif

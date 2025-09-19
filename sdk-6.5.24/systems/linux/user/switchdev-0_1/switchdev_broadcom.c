@@ -2664,3 +2664,33 @@ int SwitchdevCreateL3Host(L3HostParam *param)
 }
 
 
+int SwitchdevDeleteL3Host(L3HostParam *param)
+{
+    bcm_l3_host_t       host_info;
+    int                 rc;
+
+    if (!l3host) {
+        return -1;
+    }    
+
+    bcm_l3_host_t_init(&host_info);
+    host_info.l3a_lookup_class = param->LookupClass;
+    host_info.l3a_intf = param->HalL3Neigh; 
+
+    if (param->Host.family == AF_INET) {
+        host_info.l3a_ip_addr = ntohl(param->Host.ip[0]); 
+    } else {
+        host_info.l3a_flags =  BCM_L3_IP6;
+        memcpy(host_info.l3a_ip6_addr, param->Host.ip, 16);
+    }
+
+    printf("SwitchdevDeleteL3Host %s\n", ipaddr2str(&param->Host));
+
+    rc = bcm_l3_host_delete(param->Unit, &host_info);
+
+    if(rc) {
+       printf("SwitchdevDeleteL3Host bcm_l3_host_delete failed, rc = %d\n", rc);
+    }
+    return rc;
+}
+
