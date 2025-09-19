@@ -2643,14 +2643,14 @@ int SwitchdevCreateL3Host(L3HostParam *param)
     host_info.l3a_lookup_class = param->LookupClass;
     host_info.l3a_intf = param->HalL3Neigh; 
 
-    if (param->Dest.family == AF_INET) {
-        host_info.l3a_ip_addr = ntohl(param->Dest.ip[0]); 
+    if (param->Host.family == AF_INET) {
+        host_info.l3a_ip_addr = ntohl(param->Host.ip[0]); 
     } else {
         host_info.l3a_flags =  BCM_L3_IP6;
-        memcpy(host_info.l3a_ip6_addr, param->Dest.ip, 16);
+        memcpy(host_info.l3a_ip6_addr, param->Host.ip, 16);
     }
 
-    printf("SwitchdevCreateL3Host %s\n", ipaddr2str(&param->Dest));
+    printf("SwitchdevCreateL3Host %s\n", ipaddr2str(&param->Host));
 
     rc = bcm_l3_host_add(param->Unit, &host_info);
 
@@ -2658,7 +2658,7 @@ int SwitchdevCreateL3Host(L3HostParam *param)
         if (rc == BCM_E_EXISTS) {
             return 0;
         }
-        printf("SwitchdevCreateL3Host bcm_l3_host_add %s failed, rc = %d\n",ipaddr2str(&param->Dest), rc);
+        printf("SwitchdevCreateL3Host bcm_l3_host_add %s failed, rc = %d\n",ipaddr2str(&param->Host), rc);
     }
     return rc;
 }
