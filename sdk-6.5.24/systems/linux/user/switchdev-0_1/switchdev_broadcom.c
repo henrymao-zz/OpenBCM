@@ -2538,7 +2538,7 @@ static int switchdevCreateFIBSimple(FIBParam *param)
 
     bcm_l3_route_t_init(&route_info);
 
-    if (fib->dst.protocol == AF_INET) {
+    if (param->Dest.family == AF_INET) {
         route_info.l3a_subnet  = ntohl(param->Dest.ip[0]);
         if (param->PrefixLen == 0) {
             route_info.l3a_ip_mask = 0;
@@ -2551,8 +2551,8 @@ static int switchdevCreateFIBSimple(FIBParam *param)
         memcpy(route_info.l3a_ip6_net, param->Dest.ip, 16);
         ipv6_create_mask(route_info.l3a_ip6_mask, param->PrefixLen);
     } 
-    route_info.l3a_intf = param->HalL3Intf[0];
-    rc = bcm_l3_route_add(0, &route_info);
+    route_info.l3a_intf = param->HalL3Neigh[0];
+    rc = bcm_l3_route_add(param->Unit, &route_info);
     if (BCM_FAILURE(rc)) {
         printf("async_obj_fib_create_cb l3 route create failed: %s\n", bcm_errmsg(rc));
     }
@@ -2565,7 +2565,6 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
 {
     bcm_l3_route_t        route_info;
     bcm_l3_egress_ecmp_t  ecmp_info;
-    bcm_if_t              ecmp_egr[ECMP_MAX_PATH];
     int                   rc    = 0;
 
     if (!param) {
@@ -2577,19 +2576,19 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
     //ecmp_info.max_paths = 16;
     printf("async_obj_create_ecmp num %d\n", param->NumPath);
     //rc = bcm_l3_egress_multipath_create(0, 0, num_ecmp, ecmp_egr, &ecmp_group_id);
-    rc = bcm_l3_egress_ecmp_create(0, &ecmp_info, param->NumPath, param->HalL3Intf);
+    rc = bcm_l3_egress_ecmp_create(param->Unit, &ecmp_info, param->NumPath, param->HalL3Neigh);
     if (BCM_FAILURE(rc)) {
         printf("Error executing bcm_l3_egress_ecmp_create(): %s.\n", bcm_errmsg(rc));
         return rc;
     }
 
-    param->EcmpGroupId = ecmp_info.ecmp_intf;
+    param->HalEcmpGroupId = ecmp_info.ecmp_intf;
 
     bcm_l3_route_t_init(&route_info);
 
-    if (param->Dest.protocol == AF_INET) {
+    if (param->Dest.family == AF_INET) {
         route_info.l3a_subnet  = ntohl(param->Dest.ip[0]);
-        if (param->dst_len == 0) {
+        if (param->PrefixLen == 0) {
             route_info.l3a_ip_mask = 0;
         } else {
             route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - param->PrefixLen)) & 0xFFFFFFFF;
@@ -2602,8 +2601,8 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
     } 
     route_info.l3a_flags |= BCM_L3_MULTIPATH;
 
-    route_info.l3a_intf = param->EcmpGroupId;
-    rc = bcm_l3_route_add(0, &route_info);
+    route_info.l3a_intf = param->HalEcmpGroupId;
+    rc = bcm_l3_route_add(param->Unit, &route_info);
     if (BCM_FAILURE(rc)) {
         printf("async_obj_create_ecmp l3 route create failed: %s\n", bcm_errmsg(rc));
     }
