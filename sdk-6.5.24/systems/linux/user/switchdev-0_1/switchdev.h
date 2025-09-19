@@ -67,4 +67,12 @@ typedef struct FIBParam_s {
 
 int SwitchdevCreateFIB(FIBParam *param);
 
+typedef struct L3HostParam_s {
+    int               Unit;
+    ip_address_t      Dest;
+    int               LookupClass;
+    int               HalL3Neigh;
+}L3HostParam;
+int SwitchdevCreateL3Host(L3HostParam *param);
+
 #endif

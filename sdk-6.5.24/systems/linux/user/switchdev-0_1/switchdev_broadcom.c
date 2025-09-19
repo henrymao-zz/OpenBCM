@@ -2628,3 +2628,38 @@ int SwitchdevCreateFIB(FIBParam *param)
 
     return rc;
 }
+
+int SwitchdevCreateL3Host(L3HostParam *param)
+{
+    bcm_l3_host_t       host_info;
+    int                 rc;
+
+    if (!param) {
+        return -1;
+    }
+
+    bcm_l3_host_t_init(&host_info);
+    host_info.l3a_lookup_class = param->LookupClass;
+    host_info.l3a_intf = param->HalL3Neigh; 
+
+    if (param->Dest.family == AF_INET) {
+        host_info.l3a_ip_addr = ntohl(param->Dest.ip[0]); 
+    } else {
+        host_info.l3a_flags =  BCM_L3_IP6;
+        memcpy(host_info.l3a_ip6_addr, param->Dest.ip, 16);
+    }
+
+    printf("SwitchdevCreateL3Host %s\n", ipaddr2str(&l3host->host));
+
+    rc = bcm_l3_host_add(param->Unit, &host_info);
+
+    if(rc) {
+        if (rc == BCM_E_EXISTS) {
+            return 0;
+        }
+        printf("SwitchdevCreateL3Host bcm_l3_host_add %s failed, rc = %d\n",ipaddr2str(&l3host->host), rc);
+    }
+    return rc;
+}
+
+
