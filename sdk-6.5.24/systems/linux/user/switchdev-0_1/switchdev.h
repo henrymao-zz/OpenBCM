@@ -67,6 +67,7 @@ typedef struct FIBParam_s {
 }FIBParam;
 
 int SwitchdevCreateFIB(FIBParam *param);
+int SwitchdevDeleteFIB(FIBParam *param);
 
 typedef struct L3HostParam_s {
     int               Unit;

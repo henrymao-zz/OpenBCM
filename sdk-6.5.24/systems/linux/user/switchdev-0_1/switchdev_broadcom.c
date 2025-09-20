@@ -2523,7 +2523,7 @@ int SwitchdevDeleteNeigh(NeighParam *param)
         return -1;
     }
 
-    rc = bcm_l3_egress_destroy(param.Unit, param->HalObjectId);
+    rc = bcm_l3_egress_destroy(param->Unit, param->HalObjectId);
     if (BCM_FAILURE(rc)) {
         printf("async_obj_neigh_delete_cb l3_egress delete failed %d\n", rc);
     } 
@@ -2630,7 +2630,38 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
     return rc;
 }
 
-int SwitchdevCreateFIB(FIBParam *param)
+int SwitchdevDeleteFIB(FIBParam *param)
+{
+    bcm_l3_route_t   route_info;
+    int              rc = 0;
+
+    if (!param) {
+        return -1;
+    }
+    
+    if (param->Dest.family == AF_INET) {
+        route_info.l3a_subnet  = ntohl(param->Dest.ip[0]);
+        if (param->PrefixLen == 0) {
+            route_info.l3a_ip_mask = 0;
+        } else {
+            route_info.l3a_ip_mask = (0xFFFFFFFF << (32 - param->PrefixLen)) & 0xFFFFFFFF;
+        }
+        //printf("async_obj_fib_create_cb l3a_subnet %x l3a_ip_mask %x\n", route_info.l3a_subnet, route_info.l3a_ip_mask);
+    } else {
+        route_info.l3a_flags = BCM_L3_IP6;
+        memcpy(route_info.l3a_ip6_net, param->Dest.ip, 16);
+        ipv6_create_mask(route_info.l3a_ip6_mask, param->PrefixLen);
+    } 
+ 
+    rc = bcm_l3_route_delete(param->Unit, &route_info);
+
+    if (BCM_FAILURE(rc)) {
+        printf("SwitchdevDeleteFIB l3_route delete failed %d\n", rc);
+    } 
+    return rc;
+}
+
+int SwitchdevDeleteFIB(FIBParam *param)
 {
     int                rc    = 0;
 
@@ -2638,13 +2669,6 @@ int SwitchdevCreateFIB(FIBParam *param)
         return -1;
     }
 
-    if (!param->IsECMP) {
-        // none ecmp route
-        rc = switchdevCreateFIBSimple(param);
-    } else {
-        // handle ecmp route
-        rc = switchdevCreateFIBEcmp(param);
-    }
 
     return rc;
 }
