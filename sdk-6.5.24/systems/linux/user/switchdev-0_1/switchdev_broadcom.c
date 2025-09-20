@@ -2513,6 +2513,25 @@ int SwitchdevCreateNeigh(NeighParam *param)
     return rc;
 }
 
+int SwitchdevDeleteNeigh(NeighParam *param)
+{
+    int                rc        = 0;
+
+    //printf("async_obj_neigh_create_cb %p enter\n", obj);
+
+    if (!param) {
+        return -1;
+    }
+
+    rc = bcm_l3_egress_destroy(param.Unit, param->HalObjectId);
+    if (BCM_FAILURE(rc)) {
+        printf("async_obj_neigh_delete_cb l3_egress delete failed %d\n", rc);
+    } 
+
+    return rc;
+}
+
+
 
 static void ipv6_create_mask(uint8 *ip6_mask, uint32 prefix_length) {
     int i;
@@ -2669,7 +2688,7 @@ int SwitchdevDeleteL3Host(L3HostParam *param)
     bcm_l3_host_t       host_info;
     int                 rc;
 
-    if (!l3host) {
+    if (!param) {
         return -1;
     }    
 

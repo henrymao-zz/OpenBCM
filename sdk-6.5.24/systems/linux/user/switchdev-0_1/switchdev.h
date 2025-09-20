@@ -53,6 +53,7 @@ typedef struct NeighParam_s {
 }NeighParam;
 
 int SwitchdevCreateNeigh(NeighParam *param);
+int SwitchdevDeleteNeigh(NeighParam *param);
 
 #define  ECMP_MAX_PATH 16
 typedef struct FIBParam_s {
