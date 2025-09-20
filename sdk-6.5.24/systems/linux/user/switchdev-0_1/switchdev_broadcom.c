@@ -2630,6 +2630,25 @@ static int switchdevCreateFIBEcmp(FIBParam *param)
     return rc;
 }
 
+int SwitchdevCreateFIB(FIBParam *param)
+{
+    int    rc = 0;
+
+    if (!param) {
+        return -1;
+    }
+
+    if (!param->IsECMP) {
+        // none ecmp route
+        rc = switchdevCreateFIBSimple(param);
+    } else {
+        // handle ecmp route
+        rc = switchdevCreateFIBEcmp(param);
+    }
+
+    return rc;
+}
+
 int SwitchdevDeleteFIB(FIBParam *param)
 {
     bcm_l3_route_t   route_info;
@@ -2661,17 +2680,6 @@ int SwitchdevDeleteFIB(FIBParam *param)
     return rc;
 }
 
-int SwitchdevDeleteFIB(FIBParam *param)
-{
-    int                rc    = 0;
-
-    if (!param) {
-        return -1;
-    }
-
-
-    return rc;
-}
 
 int SwitchdevCreateL3Host(L3HostParam *param)
 {
