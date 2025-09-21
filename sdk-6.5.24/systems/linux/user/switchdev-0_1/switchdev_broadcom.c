@@ -2329,6 +2329,19 @@ int SwitchdevCreateVlan(int unit, int vid, int ifclass, bool blockbroadcast)
     return rc;
 }
 
+static int swtichdevUpdateIntfPhysical(IfParam *param)
+{
+    int    rc;
+
+    rc = bcm_port_enable_set(param->Unit, param->HalPort, param->AdminState);
+    if (BCM_FAILURE(rc)) {
+        printf("bcm_port_enable_set failed port %d: %s\n",param->HalPort, bcm_edrrmsg(rc));
+        return rc;
+    }
+
+    return rc;
+}
+
 static int SwitchdevCreateIntfPhysical(IfParam *param)
 {
     int                  rc        = 0;
@@ -2339,6 +2352,11 @@ static int SwitchdevCreateIntfPhysical(IfParam *param)
 
     if (!param) {
         return -1;
+    }
+
+    if (param->HalL3Intf > 0) {
+        //interface already exist, invoke update
+        return swtichdevUpdateIntfPhysical(param);
     }
 
     //create bcm_knet
@@ -2417,6 +2435,12 @@ static int SwitchdevCreateIntfPhysical(IfParam *param)
 }
 
 
+static int swtichdevUpdateIntfVlan(IfParam *param)
+{
+    // TODO
+    return 0;
+}
+
 static int SwitchdevCreateIntfVlan(IfParam *param)
 {
     int                  rc        = 0;
@@ -2430,6 +2454,11 @@ static int SwitchdevCreateIntfVlan(IfParam *param)
     }
 
     printf("SwitchdevCreateIntfVlan %s\n", param->IfName);
+
+    if (param->HalL3Intf > 0) {
+        //interface already exist, invoke update
+        return swtichdevUpdateIntfVlan(param);
+    }
 
     //create l2 station for the interface
     bcm_l2_station_t_init(&l2_station);
