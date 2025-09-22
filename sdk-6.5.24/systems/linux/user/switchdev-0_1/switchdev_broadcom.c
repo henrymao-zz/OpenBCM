@@ -2335,7 +2335,7 @@ static int swtichdevUpdateIntfPhysical(IfParam *param)
 
     rc = bcm_port_enable_set(param->Unit, param->HalPort, param->AdminState);
     if (BCM_FAILURE(rc)) {
-        printf("bcm_port_enable_set failed port %d: %s\n",param->HalPort, bcm_edrrmsg(rc));
+        printf("bcm_port_enable_set failed port %d: %s\n",param->HalPort, bcm_errmsg(rc));
         return rc;
     }
 
