@@ -2389,7 +2389,7 @@ static int SwitchdevCreateIntfPhysical(IfParam *param)
     sal_strncpy(filter.desc, netif.name, sizeof(filter.desc) - 1);
     filter.priority = 100;
     filter.dest_type = BCM_KNET_DEST_T_NETIF;
-    filter.dest_id = netif.port;
+    filter.dest_id = netif.id;
     filter.dest_proto = 0;
     filter.cb_user_data = 0;
     filter.m_ingport = netif.port;
@@ -2687,6 +2687,7 @@ int SwitchdevDeleteFIB(FIBParam *param)
         return -1;
     }
     
+    bcm_l3_route_t_init(&route_info);
     if (param->Dest.family == AF_INET) {
         route_info.l3a_subnet  = ntohl(param->Dest.ip[0]);
         if (param->PrefixLen == 0) {
@@ -2704,7 +2705,7 @@ int SwitchdevDeleteFIB(FIBParam *param)
     rc = bcm_l3_route_delete(param->Unit, &route_info);
 
     if (BCM_FAILURE(rc)) {
-        printf("SwitchdevDeleteFIB l3_route delete failed %d\n", rc);
+        printf("SwitchdevDeleteFIB l3_route delete failed %s\n", bcm_errmsg(rc));
     } 
     return rc;
 }
